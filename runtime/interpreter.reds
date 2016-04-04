@@ -52,27 +52,27 @@ Red/System [
 			#if debug? = yes [if verbose > 0 [log "evaluating argument"]]
 			pc: eval-expression pc end no yes
 		]
-		TYPE_GET_WORD [
+		TYPE_LIT_WORD [
 			#if debug? = yes [if verbose > 0 [log "fetching argument as-is"]]
 			stack/push pc
 			pc: pc + 1
 		]
-		default [
+		default [ ;** TYPE_GET_WORD
 			#if debug? = yes [if verbose > 0 [log "fetching argument"]]
 			switch TYPE_OF(pc) [
-				TYPE_GET_WORD [
+				TYPE_GET_WORD TYPE_WORD [
 					copy-cell _context/get as red-word! pc stack/push*
 				]
-				TYPE_PAREN [
-					either TYPE_OF(value) = TYPE_LIT_WORD [
-						stack/mark-interp-native as red-word! pc	;@@ ~paren
-						eval as red-block! pc yes
-						stack/unwind
-					][
-						stack/push pc
-					]
-				]
-				TYPE_GET_PATH [
+				;TYPE_PAREN [
+				;	either TYPE_OF(value) = TYPE_LIT_WORD [
+				;		stack/mark-interp-native as red-word! pc	;@@ ~paren
+				;		eval as red-block! pc yes
+				;		stack/unwind
+				;	][
+				;		stack/push pc
+				;	]
+				;]
+				TYPE_GET_PATH TYPE_PATH [
 					eval-path pc pc + 1 end no yes yes no
 				]
 				default [
