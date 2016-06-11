@@ -126,7 +126,126 @@ Red [
 		--assert 2 == length? second lm1-blk
 		--assert 1 == select second lm1-blk first [a:]
 		--assert 2 == select second lm1-blk first [b:]
+		
+	--test-- "load-map-2"
+		lm2-blk: load "m: make map! [a: 1 b: 2]"
+		--assert 4 == length? lm2-blk
+		--assert strict-equal? first [m:] first lm2-blk
+		--assert 'make == second lm2-blk
+		--assert 'map! == third lm2-blk
+		--assert 4 == length? fourth lm2-blk
+		--assert 1 == select fourth lm2-blk first [a:]
+		--assert 2 == select fourth lm2-blk first [b:]
 
 ===end-group===
+
+===start-group=== "load object tests"
+
+	--test-- "load-object-1"
+		lo1-blk: load {
+			o: make object! [
+				a: 1
+				b: 1.0
+				c: #"1"
+				d: "one"
+				e: #(a: 1 b: 2)
+				f: func [][1]
+			]
+		}
+		--assert block! = type? lo1-blk
+		--assert 4 = length? lo1-blk
+		--assert strict-equal?
+			first [o:]
+			first lo1-blk
+		--assert 'make == second lo1-blk
+		--assert 'object! == third lo1-blk
+		--assert 14 == length? fourth lo1-blk
+		--assert strict-equal?
+			first [a:]
+			first fourth lo1-blk
+		--assert 1 == second fourth lo1-blk
+		--assert strict-equal?
+			first [b:]
+			third fourth lo1-blk
+		--assert 1.0 == fourth fourth lo1-blk
+		--assert strict-equal?
+			first [c:]
+			fifth fourth lo1-blk
+		--assert #"1" == pick fourth lo1-blk 6
+		--assert strict-equal?
+			first [d:]
+			pick fourth lo1-blk 7
+		--assert "one" == pick fourth lo1-blk 8
+		--assert strict-equal?
+			first [e:]
+			pick fourth lo1-blk 9
+		--assert map! == type? pick fourth lo1-blk 10
+		--assert 1 == select pick fourth lo1-blk 10 'a
+		--assert 2 == select pick fourth lo1-blk 10 'b
+		--assert strict-equal?
+			first [f:]
+			pick fourth lo1-blk 11
+		--assert 'func == pick fourth lo1-blk 12
+		--assert [] == pick fourth lo1-blk 13
+		--assert [1] == pick fourth lo1-blk 14
+		
+	--test-- "load-object-2"
+		lo2-blk: load {
+			o: make object! [
+				oo: make object! [
+					ooo: make object! [
+						a: 1
+					]
+				]
+			]
+		}
+		--assert 4 == length? lo2-blk
+		--assert 4 == length? fourth lo2-blk
+		--assert 4 == length? fourth fourth lo2-blk
+		--assert 2 == length? fourth fourth fourth lo2-blk
+		--assert strict-equal?
+			first [o:]
+			first lo2-blk
+		--assert 'make == second lo2-blk
+		--assert 'object! == third lo2-blk
+		--assert strict-equal?
+			first [oo:]
+			first fourth lo2-blk
+		--assert 'make == second fourth lo2-blk
+		--assert 'object! == third fourth lo2-blk
+		--assert strict-equal?
+			first [ooo:]
+			first fourth fourth lo2-blk
+		--assert 'make == second fourth fourth lo2-blk
+		--assert 'object! == third fourth fourth lo2-blk
+		--assert strict-equal?
+			first [a:]
+			first fourth fourth fourth lo2-blk
+		--assert 1 == second fourth fourth fourth lo2-blk
+
+===end-group===
+
+===start-group=== "load next tests"
+
+	--test-- "load-next-1"
+		s: "123 []hello"
+		--assert 123 	== load/next s 's
+		--assert [] 	== load/next s 's
+		--assert 'hello == load/next s 's
+		--assert [] 	== load/next s 's
+		--assert [] 	== load/next s 's
+		--assert (head s) == "123 []hello"
+
+	--test-- "load-next-2"
+		s: "{}()[]"
+		--assert "" 			 == load/next s 's
+		--assert (make paren! 0) == load/next s 's
+		--assert [] 			 == load/next s 's
+
+	--test-- "load-next-3"
+		s: "^-{}^/(^/)^M[^-]"
+		--assert "" 			 == load/next s 's
+		--assert (make paren! 0) == load/next s 's
+		--assert [] 			 == load/next s 's
 
 ~~~end-file~~~

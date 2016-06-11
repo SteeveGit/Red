@@ -800,7 +800,7 @@ string: context [
 		]
 	]
 
-	modify: func [
+	alter: func [
 		str1		[red-string!]						;-- string! to modify
 		str2		[red-string!]						;-- string! to modify to str1
 		part		[integer!]							;-- str2 characters to overwrite, -1 means all
@@ -918,7 +918,7 @@ string: context [
 		offset	  [integer!]							;-- offset from head in codepoints
 		keep?	  [logic!]								;-- do not change str2 encoding
 	][
-		modify str1 str2 part offset keep? TYPE_OVERWRITE
+		alter str1 str2 part offset keep? TYPE_OVERWRITE
 	]
 	
 	concatenate: func [									;-- append str2 to str1
@@ -929,7 +929,7 @@ string: context [
 		keep?	  [logic!]								;-- do not change str2 encoding
 		insert?	  [logic!]								;-- insert str2 at str1 index instead of appending
 	][
-		modify str1 str2 part offset keep? as-integer insert?
+		alter str1 str2 part offset keep? as-integer insert?
 	]
 
 	concatenate-literal: func [
@@ -1095,7 +1095,7 @@ string: context [
 		]
 
 		blk: as red-block! type
-		#call [system/lexer/transcode spec none]
+		#call [system/lexer/transcode spec none none]
 
 		either zero? block/rs-length? blk [
 			ret: as red-value! blk
@@ -1488,6 +1488,7 @@ string: context [
 			int		[red-integer!]
 			char	[red-char!]
 			str2	[red-string!]
+			bits	[red-bitset!]
 			unit	[encoding!]
 			unit2	[encoding!]
 			head2	[integer!]
@@ -1497,8 +1498,13 @@ string: context [
 			c1		[integer!]
 			c2		[integer!]
 			step	[integer!]
+			sbits	[series!]
+			pbits	[byte-ptr!]
+			pos		[byte-ptr!]								;-- required by BS_TEST_BIT
 			limit	[byte-ptr!]
 			part?	[logic!]
+			bs?		[logic!]
+			not?	[logic!]
 			op		[integer!]
 			type	[integer!]
 			found?	[logic!]
@@ -1581,6 +1587,7 @@ string: context [
 		reverse?: any [reverse? last?]					;-- reduce both flags to one
 		step: step << (unit >> 1)
 		pattern: null
+		bs?: no
 		
 		;-- Value argument processing --
 		
@@ -1589,8 +1596,16 @@ string: context [
 				char: as red-char! value
 				c2: char/value
 				if case? [
-					c2: case-folding/folding-case c2 yes	;-- uppercase c2
+					c2: case-folding/folding-case c2 yes ;-- uppercase c2
 				]
+			]
+			TYPE_BITSET [
+				bits:  as red-bitset! value
+				sbits: GET_BUFFER(bits)
+				not?:  FLAG_NOT?(sbits)
+				pbits: as byte-ptr! sbits/offset
+				bs?:   yes
+				case?: no
 			]
 			TYPE_STRING
 			TYPE_FILE
@@ -1637,8 +1652,12 @@ string: context [
 				if case? [
 					c1: case-folding/folding-case c1 yes	;-- uppercase c1
 				]
-				found?: c1 = c2
-				
+				either bs? [
+					BS_TEST_BIT(pbits c1 found?)
+					if not? [found?: not found?]
+				][
+					found?: c1 = c2
+				]
 				if any [
 					match?								;-- /match option returns tail of match (no loop)
 					all [found? tail? not reverse?]		;-- /tail option too, but only when found pattern
@@ -2452,7 +2471,7 @@ string: context [
 			;-- General actions --
 			:make
 			INHERIT_ACTION	;random
-			null			;reflect
+			INHERIT_ACTION	;reflect
 			:to
 			:form
 			:mold

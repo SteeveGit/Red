@@ -25,8 +25,13 @@ also: func [
 attempt: func [
 	"Tries to evaluate a block and returns result or NONE on error"
 	value [block!]
+	/safer
 ][
-	unless error? set/any 'value try :value [get/any 'value]
+	either safer [
+		unless error? set/any 'value try/all :value [get/any 'value]
+	][
+		unless error? set/any 'value try :value [get/any 'value]
+	]
 ]
 
 comment: func [value][]
@@ -303,6 +308,8 @@ load: function [
 	source [file! url! string! binary!]
 	/header "TBD: Include Red header as a loaded value"
 	/all    "TBD: Don't evaluate Red header"
+	/next	"Load the next value only, updates source series word"
+		position [word!] "Word updated with new series position"
 	/part
 		length [integer! string!]
 	/into "Put results in out block, instead of creating a new block"
@@ -359,10 +366,10 @@ load: function [
 		binary! [source: to string! source]					;-- UTF-8 encoding
 	][source]
 
-	either part [
-		system/lexer/transcode/part source out length
-	][
-		system/lexer/transcode source out
+	case [
+		part  [system/lexer/transcode/part source out length]
+		next  [set position system/lexer/transcode/one source out]
+		'else [system/lexer/transcode source out]
 	]
 	unless :all [if 1 = length? out [out: out/1]]
 	out 
@@ -467,9 +474,9 @@ modulo: func [
 	/local r
 ][
 	b: absolute b
-    all [0 > r: a % b r: r + b]
-    a: absolute a
-    either all [a + r = (a + b) 0 < r + r - b] [r - b] [r]
+	if (r: a % b) < 0 [r: r + b]
+	a: absolute a
+	either all [a + r = (a + b) 0 < r + r - b][r - b][r]
 ]
 
 eval-set-path: func [value1][]

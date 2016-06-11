@@ -16,6 +16,14 @@ Red/System [
 	exit
 ]
 
+#define DO_EVAL_BLOCK [
+	either negative? next [
+		interpreter/eval as red-block! arg yes
+	][
+		blk/head: interpreter/eval-single arg
+	]
+]
+
 natives: context [
 	verbose:  0
 	lf?: 	  no										;-- used to print or not an ending newline
@@ -458,6 +466,7 @@ natives: context [
 	do*: func [
 		check?  [logic!]
 		args 	[integer!]
+		next	[integer!]
 		return: [integer!]
 		/local
 			cframe [byte-ptr!]
@@ -465,9 +474,11 @@ natives: context [
 			do-arg [red-value!]
 			str	   [red-string!]
 			out    [red-string!]
+			slot   [red-value!]
+			blk	   [red-block!]
 			len	   [integer!]
 	][
-		#typecheck [do args]
+		#typecheck [do args next]
 		arg: stack/arguments
 		cframe: stack/get-ctop							;-- save the current call frame pointer
 		do-arg: stack/arguments + args
@@ -475,25 +486,27 @@ natives: context [
 		if OPTION?(do-arg) [
 			copy-cell do-arg #get system/script/args
 		]
+		if next > 0 [
+			slot: _context/get as red-word! stack/arguments + next
+			blk: as red-block! copy-cell arg slot
+		]
 		
 		catch RED_THROWN_BREAK [
 			switch TYPE_OF(arg) [
-				TYPE_BLOCK [
-					interpreter/eval as red-block! arg yes
-				]
-				TYPE_PATH [
+				TYPE_BLOCK [DO_EVAL_BLOCK]
+				TYPE_PATH  [
 					interpreter/eval-path arg arg arg + 1 no no no no
 					stack/set-last arg + 1
 				]
 				TYPE_STRING [
 					str: as red-string! arg
-					#call [system/lexer/transcode str none]
-					interpreter/eval as red-block! arg yes
+					#call [system/lexer/transcode str none none]
+					DO_EVAL_BLOCK
 				]
 				TYPE_FILE [
 					str: as red-string! simple-io/read as red-file! arg no no
-					#call [system/lexer/transcode str none]
-					interpreter/eval as red-block! arg yes
+					#call [system/lexer/transcode str none none]
+					DO_EVAL_BLOCK
 				]
 				TYPE_ERROR [
 					stack/throw-error as red-object! arg
@@ -2001,24 +2014,21 @@ natives: context [
 
 	checksum*: func [
 		check?		[logic!]
-		_tcp		[integer!]
-		_hash		[integer!]
-		_method		[integer!]
-		_key		[integer!]
+		_with		[integer!]
 		/local
 			arg		[red-value!]
 			str		[red-string!]
-			bin		[red-binary!]
 			method	[red-word!]
-			key		[byte-ptr!]
-			data	[byte-ptr!]
-			b		[byte-ptr!]
-			len		[integer!]
 			type	[integer!]
+			data	[byte-ptr!]
+			len		[integer!]
+			spec	[red-value!]
+			key		[byte-ptr!]
 			key-len [integer!]
 			hash-size [red-integer!]
+			b		[byte-ptr!]
 	][
-		#typecheck [checksum _tcp _hash _method _key]
+		#typecheck [checksum _with]
 		arg: stack/arguments
 		len: -1
 		switch TYPE_OF(arg) [
@@ -2027,52 +2037,79 @@ natives: context [
 				;-- Passing len of -1 tells to-utf8 to convert all chars,
 				;	and it mods len to hold the length of the UTF8 result.
 				data: as byte-ptr! unicode/to-utf8 str :len
+				;-- len now contains the decoded data length.
+			]
+			TYPE_BINARY [
+				data: binary/rs-head as red-binary! arg
+				len: binary/rs-length? as red-binary! arg
 			]
 			default [
 				fire [TO_ERROR(script invalid-arg) data]
 			]
 		]
 
-		case [
-			_tcp >= 0 [
-				integer/box crypto/CRC_IP data len
-			]
-			_hash >= 0 [
-				hash-size: as red-integer! arg + _hash
-				integer/box crypto/HASH_STRING data len hash-size/value
-			]
-			any [_method >= 0 _key >= 0] [
-				method: as red-word! arg + _method
-				type: symbol/resolve method/symbol
-				if not crypto/known-method? type [
-					fire [TO_ERROR(script invalid-arg) method]
+		method: as red-word! arg + 1
+		type: symbol/resolve method/symbol
+
+		if not crypto/known-method? type [
+			fire [TO_ERROR(script invalid-arg) method]
+		]
+
+		;-- Trying to use /with in combination with TCP or CRC32 is an error.
+		if all [
+			_with >= 0
+			any [type = crypto/_crc32  type = crypto/_tcp]
+		][
+			ERR_INVALID_REFINEMENT_ARG((refinement/load "with") method)
+		]
+		
+		;-- TCP and CRC32 ignore [/with spec] entirely. For these methods
+		;	we process them and exit. No other dispatching needed.
+		if type = crypto/_crc32 [integer/box crypto/CRC32 data len   exit]
+		if type = crypto/_tcp   [integer/box crypto/CRC_IP data len  exit]
+
+		
+		either _with >= 0 [								;-- /with was used
+			spec: arg + _with
+			switch TYPE_OF(spec) [
+				TYPE_STRING TYPE_BINARY [
+					if type = crypto/_hash [
+						;-- /with 'spec arg for 'hash method must be an integer.
+						ERR_INVALID_REFINEMENT_ARG((refinement/load "with") spec)
+					]
+					;-- If we get here, the method returns an HMAC (MD5 or SHA*).
+					either TYPE_OF(spec) = TYPE_STRING [
+						key-len: -1							;-- Tell to-utf8 to decode everything
+						key: as byte-ptr! unicode/to-utf8 as red-string! arg + _with :key-len
+					][
+						key-len: binary/rs-length? as red-binary! arg + _with
+						key: binary/rs-head as red-binary! arg + _with
+					]
+					;-- key-len now contains the decoded key length
+					b: crypto/get-hmac data len key key-len type
+					;!! len is reused here, set to the expected digest size.
+					;!! You can't set it before calling get-hmac.
+					len: crypto/alg-digest-size crypto/alg-from-symbol type
+					stack/set-last as red-value! binary/load b len
 				]
-				b: either _key >= 0 [
-					key-len: -1							;-- Tell to-utf8 to decode everything
-					key: as byte-ptr! unicode/to-utf8 as red-string! arg + _key :key-len
-					;-- Now key-len contains the decoded key length
-					crypto/calc-hmac type data len key key-len
-				][
-					crypto/calc-hash type data len
+				TYPE_INTEGER [
+					hash-size: as red-integer! arg + _with
+					integer/box crypto/HASH_STRING data len hash-size/value
 				]
+				default [
+					fire [TO_ERROR(script invalid-arg) spec]
+				]
+			]
+		][												;-- /with was not used
+			either type = crypto/_hash [
+				ERR_INVALID_REFINEMENT_ARG((refinement/load "with") method)
+			][
+				;-- If we get here, the method returns a digest (MD5 or SHA*). 
+				b: crypto/get-digest data len crypto/alg-from-symbol type
 				;!! len is reused here, being set to the expected result size of
 				;	the hash call. So you can't set it before making that call.
-				case [
-					type = crypto/_md5    	[len: 16]
-					type = crypto/_sha1   	[len: 20]
-					type = crypto/_sha256 	[len: 32]
-					type = crypto/_sha384 	[len: 48]
-					type = crypto/_sha512 	[len: 64]
-					type = crypto/_crc32	[integer/box as integer! b	exit]
-					type = crypto/_tcp		[integer/box as integer! b  exit]
-					true [
-						fire [TO_ERROR(script invalid-arg) method]
-					]
-				]
+				len: crypto/alg-digest-size crypto/alg-from-symbol type
 				stack/set-last as red-value! binary/load b len
-			]
-			true [
-				integer/box crypto/CRC32 data len
 			]
 		]
 	]
@@ -2084,7 +2121,7 @@ natives: context [
 			word [red-word!]
 			tail [red-word!]
 	][
-		#typecheck [unset]
+		#typecheck unset
 		word: as red-word! stack/arguments
 		
 		either TYPE_OF(word) = TYPE_WORD [
@@ -2154,10 +2191,25 @@ natives: context [
 			bool [red-logic!]
 			cell [cell!]
 	][
+		#typecheck new-line?
 		cell: block/rs-head as red-block! stack/arguments
 		bool: as red-logic! stack/arguments
 		bool/header: TYPE_LOGIC
 		bool/value: cell/header and flag-nl-mask <> 0
+	]
+	
+	context?*: func [
+		check? [logic!]
+		/local
+			word [red-word!]
+			ctx	 [red-context!]
+			node [node!]
+			s	 [series!]
+	][
+		#typecheck context?
+		word: as red-word! stack/arguments
+		s: as series! word/ctx/value
+		stack/set-last s/offset + 1						;-- return back-reference
 	]
 
 	;--- Natives helper functions ---
@@ -2568,6 +2620,7 @@ natives: context [
 			:new-line*
 			:new-line?*
 			:enbase*
+			:context?*
 		]
 	]
 

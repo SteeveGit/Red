@@ -16,7 +16,7 @@ system/lexer: context [
 		type: spec/1									;-- preserve lit-words from double reduction
 		spec: reduce spec
 		src: back tail spec
-		src/1: either string? src/1 [form/part trim/all src/1 40][mold/flat/part src/1 40]
+		src/1: either string? src/1 [form/part trim/all copy src/1 40][mold/flat/part src/1 40]
 		if "^^/" = copy/part pos: skip tail src/1 -3 2 [remove/part pos 2]
 		spec/1: type
 		cause-error 'syntax any [all [missing 'missing] 'invalid] spec
@@ -337,6 +337,7 @@ system/lexer: context [
 	transcode: function [
 		src	[string!]
 		dst	[block! none!]
+		/one
 		/part	
 			length [integer! string!]
 		return: [block!]
@@ -811,17 +812,17 @@ system/lexer: context [
 			)
 		]
 
+		one-value: [any ws pos: opt literal-value pos: to end]
 		any-value: [pos: any [some ws | literal-value]]
-
 		red-rules: [any-value opt wrong-delimiters]
 
 		unless either part [
 			parse/case/part src red-rules length
 		][
-			parse/case src red-rules
+			parse/case src either one [one-value][red-rules]
 		][
 			throw-error ['value pos]
 		]
-		stack/1
+		either one [pos][stack/1]
 	]
 ]

@@ -91,7 +91,7 @@ forever: make native! [[
 foreach: make native! [[
 		"Evaluates body for each value in a series"
 		'word  [word! block!]   "Word, or words, to set on each iteration"
-		series [series! map!]
+		series [series!]
 		body   [block!]
 	]
 	#get-definition NAT_FOREACH
@@ -160,6 +160,8 @@ do: make native! [[
 		value [any-type!]
 		/args "If value is a script, this will set its system/script/args"
 			arg "Args passed to a script (normally a string)"
+		/next "Do next expression only, return it, update block word"
+			position [word!] "Word updated with new block position"
 	]
 	#get-definition NAT_DO
 ]
@@ -752,15 +754,11 @@ wait: make native! [[
 ]
 
 checksum: make native! [[
-		"Computes a checksum, CRC, or hash. Default is CRC32."
+		"Computes a checksum, CRC, hash, or HMAC."
 		data 	[binary! string! file!]
-		/tcp 				"Returns an Internet TCP 16-bit checksum"
-		/hash 				"Returns a hash value"
-			size [integer!] "Size of the hash table"
-		/method				"Method to use"
-			word [word!]	"Methods: CRC32 MD5 SHA1 SHA256 SHA384 SHA512"
-		/key				"Returns keyed HMAC value"
-			key-value [any-string!] "Key to use"
+		method	[word!]	"MD5 SHA1 SHA256 SHA384 SHA512 CRC32 TCP hash"
+		/with	"Extra value for HMAC key or hash table size; not compatible with TCP/CRC32 methods"
+			spec [any-string! binary! integer!] "String for MD5/SHA* HMAC key, integer for hash table size"
 		return: [integer! binary!]
 	]
 	#get-definition NAT_CHECKSUM
@@ -791,4 +789,12 @@ new-line?: make native! [[
 		return:  [block! paren!]
 	]
 	#get-definition NAT_NEW_LINE?
+]
+
+context?: make native! [[
+		"Returns the context in which a word is bound"
+		word	[any-word!]		"Word to check"
+		return: [object! function! none!]
+	]
+	#get-definition NAT_CONTEXT?
 ]

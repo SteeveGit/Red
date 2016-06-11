@@ -674,8 +674,9 @@ _function: context [
 			native [red-native!]
 			value  [red-value!]
 			int	   [red-integer!]
-			args	   [red-block!]
+			args   [red-block!]
 			more   [series!]
+			s	   [series!]
 	][
 		#if debug? = yes [if verbose > 0 [print-line "_function/push"]]
 
@@ -685,8 +686,17 @@ _function: context [
 		fun/ctx:	 either null? ctx [_context/make spec yes no][ctx]
 		fun/more:	 alloc-cells 5
 		
+		s: as series! fun/ctx/value
+		copy-cell as red-value! fun s/offset + 1		;-- set back-reference
+		
 		more: as series! fun/more/value
-		value: either null? body [none-value][as red-value! body]
+		either null? body [
+			value: none-value
+		][
+			body: block/clone body yes yes
+			stack/pop 1
+			value: as red-value! body
+		]
 		copy-cell value alloc-tail more					;-- store body block or none
 		
 		args: as red-block! alloc-tail more
