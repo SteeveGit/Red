@@ -867,14 +867,20 @@ make-profilable make target-class [
 
 	emit-store-path: func [
 		path [set-path!] type [word!] value parent [block! none!]
-		/local idx offset
+		/local idx offset type2 spec
 	][
 		if verbose >= 3 [print [">>>storing path:" mold path mold value]]
 
 		unless value = <last> [
 			if parent [emit #{89C2}]				;-- MOV edx, eax			; save value/address
 			emit-load value
-			emit #{92}								;-- XCHG eax, edx			; save value/restore address
+			unless all [
+				type = 'struct!
+				word? path/2
+				spec: any [parent second compiler/resolve-type path/1]
+				type2: select spec path/2
+				compiler/any-float? type2
+			][emit #{92}]							;-- XCHG eax, edx			; save value/restore address
 		]
 
 		switch type [
@@ -963,6 +969,7 @@ make-profilable make target-class [
 		value [char! logic! integer! word! block! string! tag! path! get-word! object! decimal!]
 		/with cast [object!]
 		/cdecl										;-- external call
+		/keep
 		/local spec type offset
 	][
 		if verbose >= 3 [print [">>>pushing" mold value]]
@@ -1074,7 +1081,7 @@ make-profilable make target-class [
 				][
 					compiler/resolve-path-type value
 				]
-				emit-push <last>
+				unless keep [emit-push <last>]
 			]
 			object! [
 				unless any [
@@ -1544,10 +1551,7 @@ make-profilable make target-class [
 					if block? left [emit-casting args/1 no]
 					set-width/type compiler/last-type: args/1/type
 				]
-				if path? left [
-					emit-push args/1				;-- late path loading
-					do load-from-stack
-				]
+				if path? left [emit-push/keep args/1] ;-- late path loading
 			]
 		]		
 		switch b [									;-- load right operand on FPU stack
@@ -1568,18 +1572,18 @@ make-profilable make target-class [
 				if all [object? args/2 block? right][
 					emit-casting args/2 no
 				]
-				if path? right [
-					emit-push args/2
-					do load-from-stack
-				]
+				if path? right [emit-push/keep args/2] ;-- late path loading
 			]
 		]
 		
 		reversed?: to logic! any [
-			all [b = 'reg any [all [a = 'ref block? right] all [a = 'imm block? right]]]
-			all [a = 'reg any [all [b = 'ref path? left] all [b = 'imm path? left]]]
+			all [b = 'reg any [
+				all [a = 'ref block? right]
+				all [a = 'imm block? right]
+				all [path? left block? right]
+			]]
+			all [a = 'reg b = 'ref path? left]
 		]
-		
 		case [
 			find comparison-op name [emit-float-comparison-op name a b args reversed?]
 			find math-op	   name	[emit-float-math-op		  name a b args reversed?]

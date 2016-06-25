@@ -54,8 +54,9 @@ Red/System [
 	TYPE_MAP											;-- 28		40
 	TYPE_BINARY											;-- 29		41
 	TYPE_SERIES											;-- 2A		42
-	TYPE_IMAGE											;-- 2B		43
-	TYPE_EVENT											;-- 2C		44
+	TYPE_TIME											;-- 2B		43
+	TYPE_IMAGE											;-- 2C		44
+	TYPE_EVENT											;-- 2D		45
 	TYPE_CLOSURE
 	TYPE_PORT
 	
@@ -152,6 +153,7 @@ Red/System [
 	NAT_FOREVER
 	NAT_FOREACH
 	NAT_FORALL
+	NAT_REMOVE_EACH
 	NAT_FUNC
 	NAT_FUNCTION
 	NAT_DOES
@@ -232,6 +234,7 @@ Red/System [
 	NAT_SET_ENV
 	NAT_GET_ENV
 	NAT_LIST_ENV
+	NAT_NOW
 ]
 
 #enum math-op! [

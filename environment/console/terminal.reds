@@ -12,6 +12,16 @@ Red/System [
 
 terminal: context [
 
+	#import [
+		LIBC-file cdecl [
+			realloc: "realloc" [						"Resize and return allocated memory."
+				memory			[byte-ptr!]
+				size			[integer!]
+				return:			[byte-ptr!]
+			]
+		]
+	]
+
 	#define RS_KEY_UNSET		 -1
 	#define RS_KEY_NONE			  0
 	#define RS_KEY_UP			-20
@@ -510,10 +520,8 @@ terminal: context [
 		return: [logic!]
 		/local
 			input	[red-string!]
-			node	[line-node!]
 			out		[ring-buffer!]
 			out2	[ring-buffer!]
-			pos		[integer!]
 			head	[integer!]
 			len		[integer!]
 			w		[integer!]
@@ -930,7 +938,6 @@ terminal: context [
 			beg		[integer!]
 			end		[integer!]
 			out		[ring-buffer!]
-			s		[series!]
 	][
 		hist: refresh-history vt
 		idx: vt/history-pos
@@ -955,7 +962,7 @@ terminal: context [
 		]
 
 		out: vt/out
-		out: either all [out/full? zero? out/count][out][null]
+		out: either out/full? [out][null]
 		cut-red-string vt/out/data len out
 		emit-string vt input yes yes
 		input/head: vt/prompt-len
@@ -1138,11 +1145,9 @@ terminal: context [
 	check-selection: func [
 		vt		[terminal!]
 		/local
-			out		[ring-buffer!]
-			input	[red-string!]
+			out	[ring-buffer!]
 	][
 		out: vt/out
-		input: vt/in
 		if all [
 			out/s-head <> -1
 			out/s-tail = out/last
@@ -1213,7 +1218,6 @@ terminal: context [
 			out		[ring-buffer!]
 			input	[red-string!]
 			cursor	[integer!]
-			cue		[red-string!]
 	][
 		unless vt/input? [exit]
 
@@ -1533,6 +1537,26 @@ terminal: context [
 			Syllable []
 			#default []									;-- Linux
 		]
+	]
+
+	set-buffer-lines: func [n [integer!] /local vt out][
+		vt: as terminal! v-terminal
+		out: vt/out
+		out/max: n
+		out/lines: as line-node! realloc as byte-ptr! out/lines out/max * size? line-node!
+		edit vt RS_KEY_CTRL_K							;-- clear screen
+	]
+
+	set-font-color: func [color [integer!] /local vt][
+		vt: as terminal! v-terminal
+		vt/font-color: color
+		refresh vt
+	]
+
+	set-background: func [color [integer!] /local vt][
+		vt: as terminal! v-terminal
+		vt/bg-color: color
+		refresh vt
 	]
 
 	ask: func [

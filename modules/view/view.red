@@ -170,7 +170,7 @@ on-face-deep-change*: function [owner word target action new index part state fo
 				]
 			][
 				if owner/type <> 'screen [
-					if all [owner/type = 'field word = 'text][
+					if all [find [field text] owner/type word = 'text][
 						set-quiet in owner 'data any [
 							all [not empty? owner/text attempt/safer [load owner/text]]
 							all [owner/options owner/options/default]
@@ -229,7 +229,7 @@ update-font-faces: function [parent [block! none!]][
 		foreach f parent [
 			if f/state [
 				system/reactivity/check/only f 'font
-				f/state/2: f/state/2 or 00040000h		;-- (1 << ((index? in f 'font) - 1))
+				f/state/2: f/state/2 or 00080000h		;-- (1 << ((index? in f 'font) - 1))
 				show f
 			]
 		]
@@ -253,7 +253,7 @@ face!: object [				;-- keep in sync with facet! enum
 	parent:		none
 	pane:		none
 	state:		none		;-- [handle [integer! none!] change-array [integer!] deferred [block! none!] drag-offset [pair! none!]]
-	;rate:		none		;@@ to be considered
+	rate:		none
 	edge:		none
 	para:		none
 	font:		none
@@ -286,7 +286,7 @@ face!: object [				;-- keep in sync with facet! enum
 			]
 			if word = 'font  [link-sub-to-parent self 'font old new]
 			if word = 'para  [link-sub-to-parent self 'para old new]
-			if type = 'field [
+			if find [field text] type [
 				if word = 'text [
 					set-quiet 'data any [
 						all [not empty? new attempt/safer [load new]]
@@ -295,7 +295,7 @@ face!: object [				;-- keep in sync with facet! enum
 				]
 				if 'data = word [
 					either data [
-						modify text 'owned none
+						if string? text [modify text 'owned none]
 						set-quiet 'text form data		;@@ use form/into (avoids rebinding)
 						modify text 'owned reduce [self 'text]
 					][
@@ -412,6 +412,7 @@ system/view: context [
 	
 	evt-names: make hash! [
 		detect			on-detect
+		time			on-time
 		down			on-down
 		up				on-up
 		mid-down		on-mid-down
@@ -599,7 +600,7 @@ show: function [
 	if face/pane [foreach f face/pane [show/with f face]]
 	;check-all-reactions face
 	
-	if all [new? face/type = 'window][
+	if all [new? face/type = 'window face/visible?][
 		system/view/platform/show-window obj
 	]
 ]
@@ -699,7 +700,14 @@ remove-event-func: function [
 	"Remove an event function previously added"
 	fun [function!]
 ][
-	remove find system/view/handlers :fun
+	remove find/same system/view/handlers :fun
+]
+
+request-font: function [
+	"Requests a font object"
+	/mono			"Show monospaced font only"
+][
+	system/view/platform/request-font make font! [] mono
 ]
 
 ;=== Global handlers ===

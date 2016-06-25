@@ -18,6 +18,26 @@ Red/System [
 
 environ: as int-ptr! 0
 
+timeval!: alias struct! [
+	tv_sec	[integer!]
+	tv_usec [integer!]
+]
+
+tm!: alias struct! [
+	sec		[integer!]		;-- Seconds		[0-60] (1 leap second)
+	min		[integer!]		;-- Minutes		[0-59]
+	hour	[integer!]		;-- Hours		[0-23]
+	mday	[integer!]		;-- Day			[1-31]
+	mon		[integer!]		;-- Month		[0-11]
+	year	[integer!]		;-- Years since 1900
+	wday	[integer!]		;-- Day of week [0-6]
+	yday	[integer!]		;-- Days in year[0-365]
+	isdst	[integer!]		;-- DST			[-1/0/1]
+
+	gmtoff	[integer!]		;-- Seconds east of UTC
+	zone	[c-string!]		;-- Timezone abbreviation
+]
+
 #import [
 	LIBC-file cdecl [
 		wprintf: "wprintf" [
@@ -65,6 +85,19 @@ environ: as int-ptr! 0
 		unsetenv: "unsetenv" [
 			name		[c-string!]
 			return:		[integer!]
+		]
+		gettimeofday: "gettimeofday" [
+			tv		[timeval!]
+			tz		[integer!]			;-- obsolete
+			return: [integer!]			;-- 0: success -1: failure
+		]
+		gmtime: "gmtime" [
+			tv_sec	[int-ptr!]
+			return: [tm!]
+		]
+		localtime: "localtime" [
+			tv_sec	[int-ptr!]
+			return: [tm!]
 		]
 	]
 ]
@@ -118,8 +151,6 @@ print-UCS4: func [
 print-line-UCS4: func [
 	str    [int-ptr!]									;-- UCS-4 string
 	size   [integer!]
-	/local
-		cp [integer!]									;-- codepoint
 ][
 	assert str <> null
 
@@ -308,4 +339,23 @@ get-env: func [
 	if len + 1 > valsize [return len + 1]
 	copy-memory as byte-ptr! value as byte-ptr! val len
 	len
+]
+
+get-time: func [
+	utc?	 [logic!]
+	precise? [logic!]
+	return:  [float!]
+	/local
+		time	[timeval!]
+		tm		[tm!]
+		micro	[float!]
+		t		[float!]
+][
+	time: declare timeval!
+	gettimeofday time 0
+	tm: either utc? [gmtime as int-ptr! time][localtime as int-ptr! time]
+	micro: 0.0
+	if precise? [micro: integer/to-float time/tv_usec]
+	t: integer/to-float tm/hour * 3600 + (tm/min * 60) + tm/sec * 1000
+	t * 1E3 + micro * 1E3			;-- nano second
 ]

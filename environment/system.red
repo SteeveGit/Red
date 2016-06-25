@@ -51,7 +51,7 @@ system: context [
 		errors: context [
 			throw: object [
 				code:				0
-				type:				"Throw error"
+				type:				"Throw Error"
 				break:				"no loop to break"
 				return:				"return or exit not in function"
 				throw:				["no catch for throw:" :arg1]
@@ -64,7 +64,7 @@ system: context [
 			]
 			syntax: object [
 				code:				200
-				type:				"Syntax error"
+				type:				"Syntax Error"
 				invalid:			["invalid" :arg1 "at" :arg2]
 				missing:			["missing" :arg1 "at" :arg2]
 				no-header:			["script is missing a Red header:" :arg1]
@@ -75,7 +75,7 @@ system: context [
 			]
 			script: object [
 				code:				300
-				type:				"Script error"
+				type:				"Script Error"
 				no-value:			[:arg1 "has no value"]
 				need-value:			[:arg1 "needs a value"]
 				not-defined:		[:arg1 "word is not bound to a context"]
@@ -151,6 +151,7 @@ system: context [
 				bad-window:			"VIEW - a window face cannot be nested in another window"
 				not-linked:			"VIEW - face not linked to a window"
 				not-event-type:		["VIEW - not a valid event type" :arg1]
+				invalid-facet-type:	["VIEW - invalid rate value:" :arg1]
 				vid-invalid-syntax:	["VID - invalid syntax at:" :arg1]
 				react-bad-func:		"REACT - /LINK option requires a function! as argument"
 				react-not-enough:	"REACT - reactive function has not enough arguments"
@@ -160,14 +161,14 @@ system: context [
 			]
 			math: object [
 				code:				400
-				type:				"Math error"
+				type:				"Math Error"
 				zero-divide:		"attempt to divide by zero"
 				overflow:			"math or number overflow"
 				positive:			"positive number required"
 			]
 			access: object [
 				code:				500
-				type:				"Access error"
+				type:				"Access Error"
 				cannot-open:		["cannot open:" :arg1]
 				invalid-utf8:		["invalid UTF-8 encoding:" :arg1]
 				;not-open:			["port is not open:" :arg1]
@@ -206,12 +207,12 @@ system: context [
 			]
 			user: object [
 				code:				800
-				type:				"User error"
+				type:				"User Error"
 				message:			[:arg1]
 			]
 			internal: object [
 				code:				900
-				type:				"Internal error"
+				type:				"Internal Error"
 				bad-path:			["bad path:" arg1]
 				not-here:			[arg1 "not supported on your system"]
 				no-memory:			"not enough memory"

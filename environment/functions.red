@@ -74,9 +74,9 @@ quote: func [
 	:value
 ]
 
-first:	func ["Returns the first value in a series"  s [series! tuple! pair!]] [pick s 1]	;@@ temporary definitions, should be natives ?
-second:	func ["Returns the second value in a series" s [series! tuple! pair!]] [pick s 2]
-third:	func ["Returns the third value in a series"  s [series! tuple!]] [pick s 3]
+first:	func ["Returns the first value in a series"  s [series! tuple! pair! time!]] [pick s 1]	;@@ temporary definitions, should be natives ?
+second:	func ["Returns the second value in a series" s [series! tuple! pair! time!]] [pick s 2]
+third:	func ["Returns the third value in a series"  s [series! tuple! time!]] [pick s 3]
 fourth:	func ["Returns the fourth value in a series" s [series! tuple!]] [pick s 4]
 fifth:	func ["Returns the fifth value in a series"  s [series! tuple!]] [pick s 5]
 
@@ -116,6 +116,7 @@ routine?:	 func ["Returns true if the value is this type" value [any-type!]] [ro
 set-path?:	 func ["Returns true if the value is this type" value [any-type!]] [set-path!	= type? :value]
 set-word?:	 func ["Returns true if the value is this type" value [any-type!]] [set-word!	= type? :value]
 string?:	 func ["Returns true if the value is this type" value [any-type!]] [string!		= type? :value]
+time?:		 func ["Returns true if the value is this type" value [any-type!]] [time!		= type? :value]
 typeset?:	 func ["Returns true if the value is this type" value [any-type!]] [typeset!	= type? :value]
 tuple?:		 func ["Returns true if the value is this type" value [any-type!]] [tuple!		= type? :value]
 unset?:		 func ["Returns true if the value is this type" value [any-type!]] [unset!		= type? :value]
@@ -363,7 +364,7 @@ load: function [
 			][return none]
 			source: to string! source/3
 		]
-		binary! [source: to string! source]					;-- UTF-8 encoding
+		binary! [source: to string! source]				;-- For text: UTF-8 encoding TBD: load image in binary form
 	][source]
 
 	case [
@@ -406,8 +407,11 @@ save: function [
 			]
 		]
 		unless find-encoder? [
-			data: either all [mold/all/only :value][mold/only :value]
-			append data newline
+			data: either all [
+				append mold/all/only :value newline
+			][
+				trim mold/only :value
+			]
 			case/all [
 				not binary? data [data: to binary! data]
 				length [
@@ -422,7 +426,7 @@ save: function [
 					foreach [k v] header-data [
 						append header-str reduce [#"^-" mold k #" " mold v newline]
 					]
-					append header-str "]^/"
+					append header-str "]^/^/"
 					insert data header-str
 				]
 			]
@@ -468,9 +472,9 @@ pad: func [
 
 modulo: func [
 	"Compute a nonnegative remainder of A divided by B"
-	a		[number! char! pair! tuple! vector!]
-	b		[number! char! pair! tuple! vector!]
-	return: [number! char! pair! tuple! vector!]
+	a		[number! char! pair! tuple! vector! time!]
+	b		[number! char! pair! tuple! vector! time!]
+	return: [number! char! pair! tuple! vector! time!]
 	/local r
 ][
 	b: absolute b
@@ -493,14 +497,14 @@ to-red-file: func [
 	i: 1
 	either system/platform = 'Windows [
 		until [
-			c: path/(i)
+			c: pick path i
 			i: i + 1
 			case [
 				c = #":" [
 					if any [colon? slash?] [return dst]
 					colon?: yes
 					if i <= len [
-						c: path/(i)
+						c: pick path i
 						if any [c = #"\" c = #"/"][i: i + 1]	;-- skip / in foo:/file
 					]
 					c: #"/"
@@ -549,7 +553,7 @@ change-dir: function [
 
 list-dir: function [
 	"Displays a list of files and directories from given folder or current one"
-	'dir [any-type!] "Folder to list"
+	dir [any-type!]  "Folder to list"
 	/col			 "Forces the display in a given number of columns"
 		n [integer!] "Number of columns"
 ][
@@ -578,6 +582,47 @@ list-dir: function [
 		]
 		prin lf
 	]
+]
+
+make-dir: function [
+	"Creates the specified directory. No error if already exists"
+	path [file!]
+	/deep "Create subdirectories too"
+][
+	if empty? path [return path]
+	if slash <> last path [path: dirize path]
+	if exists? path [
+		if dir? path [return path]
+		cause-error 'access 'cannot-open path
+	]
+	if any [not deep url? path] [
+		create-dir path
+		return path
+	]
+	path: copy path
+	dirs: copy []
+	while [
+		all [
+			not empty? path
+			not exists? path
+			remove back tail path
+		]
+	][
+		end: any [find/last/tail path slash path]
+		insert dirs copy end
+		clear end
+	]
+	created: copy []
+	foreach dir dirs [
+		path: either empty? path [dir] [path/:dir]
+		append path slash
+		if error? try [make-dir path] [
+			foreach dir created [attempt [delete dir]]
+			cause-error 'access 'cannot-open path
+		]
+		insert created path
+	]
+	path
 ]
 
 to-image: func [value][
@@ -689,13 +734,10 @@ flip-exe-flag: function [
 
 split: function [
 	"Break a string series into pieces using the provided delimiters"
-	series	[any-string!]	"String series to split"
-	dlm		[string! char!]	"Delimiter as a char or string pattern"
-	return: [block!]		"Returns a block of split pieces without the delimiters"
-	/local value
+	series [any-string!] dlm [string! char! bitset!] /local s
 ][
-	rule: complement charset dlm
-	parse series [collect [any [keep copy value some rule | skip]]]
+	num: either string? dlm [length? dlm][1]
+	parse series [collect any [copy s [to dlm | to end] keep (s) num skip]]
 ]
 
 dirize: func [

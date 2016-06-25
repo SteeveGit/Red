@@ -10,6 +10,24 @@ Red/System [
 	}
 ]
 
+;; ===== Extra slots usage in Window structs =====
+;;
+;;		-60 :							<- TOP
+;;		-20 : evolved-base-layered: child handle
+;;		-16 : base-layered: owner handle
+;;		-12 : base-layered: clipped? flags
+;;		 -8  : base-layered: screen pos Y
+;;		 -4  : camera (camera!)
+;;				console (terminal!)
+;;				base: bitmap cache | base-layered: screen pos X
+;;				draw (old-dc)
+;;				group-box (frame hWnd)
+;;		  0   : |
+;;		  4   : |__ face!
+;;		  8   : |
+;;		  12  : |
+;;		  16  : FACE_OBJ_FLAGS        <- BOTTOM
+
 #include %win32.reds
 #include %classes.reds
 #include %events.reds
@@ -37,6 +55,7 @@ current-msg: 	as tagMSG 0
 wc-extra:		80										;-- reserve 64 bytes for win32 internal usage (arbitrary)
 wc-offset:		60										;-- offset to our 16+4 bytes
 win8+?:			no
+win-state:		0
 
 log-pixels-x:	0
 log-pixels-y:	0
@@ -429,8 +448,10 @@ window-border-info?: func [
 		x/value: pt/x
 		y/value: pt/y
 	]
-	width/value: (win/right - win/left) - client/right
-	height/value: (win/bottom - win/top) - client/bottom
+	if width <> null [
+		width/value: (win/right - win/left) - client/right
+		height/value: (win/bottom - win/top) - client/bottom
+	]
 ]
 
 init-window: func [										;-- post-creation settings
@@ -769,17 +790,15 @@ OS-make-view: func [
 		values	  [red-value!]
 		type	  [red-word!]
 		str		  [red-string!]
-		tail	  [red-string!]
 		offset	  [red-pair!]
 		size	  [red-pair!]
 		data	  [red-block!]
-		int		  [red-integer!]
-		img		  [red-image!]
 		menu	  [red-block!]
 		show?	  [red-logic!]
 		enable?	  [red-logic!]
 		selected  [red-integer!]
 		para	  [red-object!]
+		rate	  [red-value!]
 		flags	  [integer!]
 		ws-flags  [integer!]
 		bits	  [integer!]
@@ -808,10 +827,10 @@ OS-make-view: func [
 	show?:	  as red-logic!		values + FACE_OBJ_VISIBLE?
 	enable?:  as red-logic!		values + FACE_OBJ_ENABLE?
 	data:	  as red-block!		values + FACE_OBJ_DATA
-	img:	  as red-image!		values + FACE_OBJ_IMAGE
 	menu:	  as red-block!		values + FACE_OBJ_MENU
 	selected: as red-integer!	values + FACE_OBJ_SELECTED
 	para:	  as red-object!	values + FACE_OBJ_PARA
+	rate:	  					values + FACE_OBJ_RATE
 
 	flags: 	  WS_CHILD or WS_CLIPSIBLINGS
 	ws-flags: 0
@@ -866,7 +885,7 @@ OS-make-view: func [
 		]
 		sym = text [
 			class: #u16 "RedFace"
-			flags: flags or SS_SIMPLE or SS_NOTIFY
+			flags: flags or SS_SIMPLE
 		]
 		sym = text-list [
 			class: #u16 "RedListBox"
@@ -1055,6 +1074,7 @@ OS-make-view: func [
 		sym = window [init-window handle offset size bits]
 		true [0]
 	]
+	if TYPE_OF(rate) <> TYPE_NONE [change-rate handle rate]
 
 	SetWindowLong handle wc-offset + 16 get-flags as red-block! values + FACE_OBJ_FLAGS
 	stack/unwind
@@ -1107,19 +1127,25 @@ change-offset: func [
 	pos  [red-pair!]
 	type [integer!]
 	/local
-		owner [handle!]
-		child [handle!]
-		size  [red-pair!]
-		flags [integer!]
-		style [integer!]
-		param [integer!]
-		pt    [red-pair!]
-		offset [tagPOINT]
-		values [red-value!]
-		layer? [logic!]
+		owner	[handle!]
+		child	[handle!]
+		size	[red-pair!]
+		flags	[integer!]
+		style	[integer!]
+		param	[integer!]
+		pt		[red-pair!]
+		offset	[tagPOINT]
+		values	[red-value!]
+		layer?	[logic!]
+		x		[integer!]
+		y		[integer!]	
 ][
-	flags: SWP_NOSIZE or SWP_NOZORDER
+	flags: SWP_NOSIZE or SWP_NOZORDER or SWP_NOACTIVATE
 	pt: declare red-pair!
+
+	x: 0
+	y: 0
+	if type = window [window-border-info? hWnd :x :y null null]
 
 	if all [not win8+? type = base][
 		style: GetWindowLong hWnd GWL_EXSTYLE
@@ -1132,7 +1158,6 @@ change-offset: func [
 			owner: as handle! GetWindowLong hWnd wc-offset - 16
 			child: as handle! GetWindowLong hWnd wc-offset - 20
 
-			flags: flags or SWP_NOACTIVATE
 			pt/x: pos/x
 			pt/y: pos/y
 			ClientToScreen owner (as tagPOINT pt) + 1
@@ -1164,7 +1189,7 @@ change-offset: func [
 	SetWindowPos 
 		hWnd
 		as handle! 0
-		pos/x pos/y
+		pos/x + x pos/y + y
 		0 0
 		flags
 	if type = tab-panel [update-tab-contents hWnd FACE_OBJ_OFFSET]
@@ -1239,9 +1264,7 @@ change-selection: func [
 	int	   [red-integer!]								;-- can be also none! | object!
 	values [red-value!]
 	/local
-		face   [red-object!]
 		type   [red-word!]
-		handle [handle!]
 		sym	   [integer!]
 ][
 	type: as red-word! values + FACE_OBJ_TYPE
@@ -1283,6 +1306,9 @@ change-data: func [
 		word 	[red-word!]
 		f		[red-float!]
 		str		[red-string!]
+		size	[red-pair!]
+		range	[integer!]
+		flt		[float!]
 		caption [c-string!]
 		type	[integer!]
 ][
@@ -1291,6 +1317,17 @@ change-data: func [
 	type: word/symbol
 	
 	case [
+		all [
+			type = slider
+			TYPE_OF(data) = TYPE_PERCENT
+		][
+			f: as red-float! data
+			size: as red-pair! values + FACE_OBJ_SIZE
+			flt: f/value
+			range: either size/y > size/x [flt: 1.0 - flt size/y][size/x]
+			flt: flt * integer/to-float range
+			SendMessage hWnd TBM_SETPOS 1 float/to-integer flt
+		]
 		all [
 			type = progress
 			TYPE_OF(data) = TYPE_PERCENT
@@ -1330,6 +1367,31 @@ change-data: func [
 				type = drop-list
 		]
 		true [0]										;-- default, do nothing
+	]
+]
+
+change-rate: func [
+	hWnd [handle!]
+	rate [red-value!]
+	/local
+		int [red-integer!]
+		tm  [red-time!]
+][
+	switch TYPE_OF(rate) [
+		TYPE_INTEGER [
+			int: as red-integer! rate
+			if int/value <= 0 [fire [TO_ERROR(script invalid-facet-type) rate]]
+			KillTimer hWnd null
+			SetTimer hWnd null 1000 / int/value :TimerProc
+		]
+		TYPE_TIME [
+			tm: as red-time! rate
+			if tm/time <= 0.0 [fire [TO_ERROR(script invalid-facet-type) rate]]
+			KillTimer hWnd null
+			SetTimer hWnd null float/to-integer tm/time / 1E6 :TimerProc
+		]
+		TYPE_NONE [KillTimer hWnd null]
+		default	  [fire [TO_ERROR(script invalid-facet-type) rate]]
 	]
 ]
 
@@ -1493,7 +1555,6 @@ OS-update-view: func [
 		values	[red-value!]
 		state	[red-block!]
 		menu	[red-block!]
-		draw	[red-block!]
 		word	[red-word!]
 		int		[red-integer!]
 		int2	[red-integer!]
@@ -1562,6 +1623,9 @@ OS-update-view: func [
 				null
 		]
 	]
+	if flags and FACET_FLAG_RATE <> 0 [
+		change-rate hWnd values + FACE_OBJ_RATE
+	]
 	if flags and FACET_FLAG_FONT <> 0 [
 		set-font hWnd face values
 		InvalidateRect hWnd null 1
@@ -1591,6 +1655,7 @@ OS-destroy-view: func [
 		handle [handle!]
 		values [red-value!]
 		obj	   [red-object!]
+		rate   [red-value!]
 		flags  [integer!]
 ][
 	handle: get-face-handle face
@@ -1599,6 +1664,8 @@ OS-destroy-view: func [
 	if flags and FACET_FLAGS_MODAL <> 0 [
 		SetActiveWindow GetWindow handle GW_OWNER
 	]
+	rate: values + FACE_OBJ_RATE
+	if TYPE_OF(rate) <> TYPE_NONE [change-rate handle none-value]
 
 	free-handles handle
 
@@ -1627,7 +1694,6 @@ OS-update-facet: func [
 		word [red-word!]
 		sym	 [integer!]
 		type [integer!]
-		hWnd [handle!]
 ][
 	sym: symbol/resolve facet/symbol
 	
@@ -1702,7 +1768,6 @@ OS-to-image: func [
 		bitmap	[integer!]
 		img		[red-image!]
 		word	[red-word!]
-		type	[integer!]
 		size	[red-pair!]
 		screen? [logic!]
 ][

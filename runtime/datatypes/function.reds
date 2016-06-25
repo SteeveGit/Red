@@ -331,13 +331,10 @@ _function: context [
 			vec		  [red-vector!]
 			list	  [red-block!]
 			value	  [red-value!]
-			value2	  [red-value!]
 			tail	  [red-value!]
 			saved	  [red-value!]
 			w		  [red-word!]
-			dt		  [red-datatype!]
 			blk		  [red-block!]
-			rt		  [red-routine!]
 			s		  [series!]
 			routine?  [logic!]
 			function? [logic!]
@@ -484,7 +481,7 @@ _function: context [
 					w: as red-word! value
 					many?: any [
 						EQUAL_SYMBOLS?(w/symbol words/foreach)
-						;EQUAL_SYMBOLS?(w/symbol words/remove-each)
+						EQUAL_SYMBOLS?(w/symbol words/remove-each)
 						;EQUAL_SYMBOLS?(w/symbol words/map-each)
 					]
 					if any [
@@ -604,6 +601,7 @@ _function: context [
 			value  [red-value!]
 			end	   [red-value!]
 			next   [red-value!]
+			next2  [red-value!]
 			block? [logic!]
 	][
 		value: block/rs-head spec
@@ -614,6 +612,12 @@ _function: context [
 				TYPE_WORD
 				TYPE_GET_WORD [
 					next: value + 1
+					if all [next < end TYPE_OF(next) = TYPE_STRING][
+						next2: next + 1
+						if all [next2 < end TYPE_OF(next2) = TYPE_BLOCK][
+							fire [TO_ERROR(script bad-func-def)	spec]
+						]
+					]
 					block?: all [
 						next < end
 						TYPE_OF(next) = TYPE_BLOCK

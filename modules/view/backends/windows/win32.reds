@@ -289,6 +289,7 @@ Red/System [
 #define WM_ENTERMENULOOP	0211h
 #define WM_SIZING			0214h
 #define WM_MOVING			0216h
+#define WM_ENTERSIZEMOVE	0231h
 #define WM_EXITSIZEMOVE		0232h
 #define WM_COPY				0301h
 #define WM_PASTE			0302h
@@ -808,6 +809,41 @@ RECT_STRUCT_FLOAT32: alias struct! [
 	height		[float32!]
 ]
 
+tagLOGFONT: alias struct! [								;-- 92 bytes
+	lfHeight				[integer!]
+	lfWidth					[integer!]
+	lfEscapement			[integer!]
+	lfOrientation			[integer!]
+	lfWeight				[integer!]
+	lfItalic				[byte!]
+	lfUnderline				[byte!]
+	lfStrikeOut				[byte!]
+	lfCharSet				[byte!]
+	lfOutPrecision			[byte!]
+	lfClipPrecision			[byte!]
+	lfQuality				[byte!]
+	lfPitchAndFamily		[byte!]
+	lfFaceName				[integer!]					;@@ 64 bytes offset: 28
+]
+
+tagCHOOSEFONT: alias struct! [
+	lStructSize		[integer!]
+	hwndOwner		[int-ptr!]
+	hDC				[integer!]
+	lpLogFont		[tagLOGFONT]
+	iPointSize		[integer!]
+	Flags			[integer!]
+	rgbColors		[integer!]
+	lCustData		[integer!]
+	lpfnHook		[integer!]
+	lpTemplateName	[c-string!]
+	hInstance		[integer!]
+	lpszStyle		[c-string!]
+	nFontType		[integer!]							;-- WORD
+	nSizeMin		[integer!]
+	nSizeMax		[integer!]
+]
+
 DwmIsCompositionEnabled!: alias function! [
 	pfEnabled	[int-ptr!]
 	return:		[integer!]
@@ -872,6 +908,9 @@ DwmIsCompositionEnabled!: alias function! [
 		]
 	]
 	"User32.dll" stdcall [
+		GetForegroundWindow: "GetForegroundWindow" [
+			return:		[handle!]
+		]
 		IsWindowVisible: "IsWindowVisible" [
 			hWnd		[handle!]
 			return:		[logic!]
@@ -1635,7 +1674,53 @@ DwmIsCompositionEnabled!: alias function! [
 			return: 			[handle!]
 		]
 	]
+	"comdlg32.dll" stdcall [
+		ChooseFont: "ChooseFontW" [
+			lpcf		[tagCHOOSEFONT]
+			return:		[logic!]
+		]
+	]
 	"gdiplus.dll" stdcall [
+		GdipCreateMatrix: "GdipCreateMatrix" [
+			matrix		[int-ptr!]
+			return:		[integer!]
+		]
+		GdipDeleteMatrix: "GdipDeleteMatrix" [
+			matrix		[integer!]
+			return:		[integer!]
+		]
+		GdipRotateMatrix: "GdipRotateMatrix" [
+			matrix		[integer!]
+			angle		[float32!]
+			matrixorder [integer!]
+			return:		[integer!]
+		]
+		GdipTranslateMatrix: "GdipTranslateMatrix" [
+			matrix		[integer!]
+			dx			[float32!]
+			dy			[float32!]
+			matrixorder	[integer!]
+			return:		[integer!]
+		]
+		GdipScaleMatrix: "GdipScaleMatrix" [
+			matrix		[integer!]
+			sx			[float32!]
+			sy			[float32!]
+			matrixorder	[integer!]
+			return:		[integer!]
+		]
+		GdipTransformPath: "GdipTransformPath" [
+			path		[integer!]
+			matrix		[integer!]
+			return:		[integer!]
+		]
+		GdipTranslatePathGradientTransform: "GdipTranslatePathGradientTransform" [
+			matrix		[integer!]
+			dx			[float32!]
+			dy			[float32!]
+			matrixorder	[integer!]
+			return:		[integer!]
+		]
 		GdipSetPathGradientWrapMode: "GdipSetPathGradientWrapMode" [
 			brush		[integer!]
 			wrapmode	[integer!]
@@ -1674,24 +1759,16 @@ DwmIsCompositionEnabled!: alias function! [
 			point		[tagPOINT]
 			return:		[integer!]
 		]
+		GdipGetPathGradientCenterPointI: "GdipGetPathGradientCenterPointI" [
+			brush		[integer!]
+			point		[tagPOINT]
+			return:		[integer!]
+		]
 		GdipSetPathGradientPresetBlend: "GdipSetPathGradientPresetBlend" [
 			brush		[integer!]
 			colors		[int-ptr!]
 			positions	[pointer! [float32!]]
 			count		[integer!]
-			return:		[integer!]
-		]
-		GdipScalePathGradientTransform: "GdipScalePathGradientTransform" [
-			brush		[integer!]
-			sx			[float32!]
-			sy			[float32!]
-			matrixorder	[integer!]
-			return:		[integer!]
-		]
-		GdipRotatePathGradientTransform: "GdipRotatePathGradientTransform" [
-			brush		[integer!]
-			angle		[float32!]
-			matrixorder	[integer!]
 			return:		[integer!]
 		]
 		GdipScaleLineTransform: "GdipScaleLineTransform" [
@@ -2143,4 +2220,11 @@ DwmIsCompositionEnabled!: alias function! [
 			]
 		]
 	]
+]
+
+zero-memory: func [
+	dest	[byte-ptr!]
+	size	[integer!]
+][
+	loop size [dest/value: #"^@" dest: dest + 1]
 ]

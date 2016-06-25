@@ -38,11 +38,7 @@ natives: context [
 		[variadic]
 		count	   [integer!]
 		list	   [int-ptr!]
-		/local
-			offset [integer!]
 	][
-		offset: 0
-		
 		until [
 			table/top: list/value
 			top: top + 1
@@ -206,7 +202,6 @@ natives: context [
 			w	   [red-word!]
 			body   [red-block!]
 			count  [red-integer!]
-			cnt	   [integer!]
 			i	   [integer!]
 	][
 		#typecheck repeat
@@ -341,6 +336,47 @@ natives: context [
 		unless break? [_context/set w saved]
 	]
 	
+	remove-each*: func [
+		check? [logic!]
+		/local
+			value  [red-value!]
+			body   [red-block!]
+			part   [red-integer!]
+			size   [integer!]
+			multi? [logic!]
+	][
+		#typecheck remove-each
+		value: stack/arguments
+		body: as red-block! stack/arguments + 2
+
+		part: as red-integer! integer/push 0			;-- store number of words to set
+		stack/push stack/arguments + 1					;-- copy arguments to stack top in reverse order
+		stack/push value								;-- (required by foreach-next)
+
+		stack/mark-loop words/_body
+		multi?: TYPE_OF(value) = TYPE_BLOCK
+		
+		either multi? [
+			size: block/rs-length? as red-block! value
+			part/value: size
+		][
+			size: 1
+		]
+		while [either multi? [foreach-next-block size][foreach-next]][	;-- each [...] / each <word!>
+			stack/reset
+			catch RED_THROWN_BREAK	[interpreter/eval body no]
+			switch system/thrown [
+				RED_THROWN_BREAK	[system/thrown: 0 break]
+				RED_THROWN_CONTINUE	[system/thrown: 0 continue]
+				0 					[0]
+				default				[re-throw]
+			]
+			remove-each-next size
+		]
+		stack/set-last unset-value
+		stack/unwind-last
+	]
+	
 	func*: func [check? [logic!]][
 		#typecheck func
 		_function/validate as red-block! stack/arguments
@@ -473,10 +509,8 @@ natives: context [
 			arg	   [red-value!]
 			do-arg [red-value!]
 			str	   [red-string!]
-			out    [red-string!]
 			slot   [red-value!]
 			blk	   [red-block!]
-			len	   [integer!]
 	][
 		#typecheck [do args next]
 		arg: stack/arguments
@@ -573,6 +607,7 @@ natives: context [
 			w	  [red-word!]
 			value [red-value!]
 			blk	  [red-block!]
+			type  [integer!]
 			only? [logic!]
 			some? [logic!]
 	][
@@ -581,6 +616,10 @@ natives: context [
 		value: stack/arguments + 1
 		only?: _only? <> -1
 		some?: _some? <> -1
+		
+		if all [any? = -1 TYPE_OF(value) = TYPE_UNSET][
+			fire [TO_ERROR(script need-value) w]
+		]
 		
 		switch TYPE_OF(w) [
 			TYPE_PATH
@@ -596,6 +635,10 @@ natives: context [
 				stack/set-last value
 			]
 			TYPE_MAP [
+				type: TYPE_OF(value)
+				unless any [type = TYPE_BLOCK type = TYPE_PAREN type = TYPE_HASH][
+					fire [TO_ERROR(script invalid-type) datatype/push type]
+				]
 				map/set-many as red-hash! w as red-block! value only? some?
 				stack/set-last value
 			]
@@ -604,9 +647,7 @@ natives: context [
 				set-many blk value block/rs-length? blk only? some?
 				stack/set-last value
 			]
-			default [
-				stack/set-last _context/set w value
-			]
+			default [stack/set-last _context/set w value]
 		]
 	]
 
@@ -738,7 +779,6 @@ natives: context [
 		arg2    [red-value!]
 		return:	[logic!]
 		/local
-			result [red-logic!]
 			type   [integer!]
 			res    [logic!]
 	][
@@ -1353,10 +1393,8 @@ natives: context [
 			data [red-string!]
 			int  [red-integer!]
 			base [integer!]
-			s	 [series!]
 			p	 [byte-ptr!]
 			len  [integer!]
-			unit [integer!]
 			ret  [red-binary!]
 	][
 		#typecheck [enbase base-arg]
@@ -1555,8 +1593,6 @@ natives: context [
 	arcsine*: func [
 		check?  [logic!]
 		radians [integer!]
-		/local
-			f	[red-float!]
 	][
 		#typecheck [arcsine radians]
 		arc-trans radians TYPE_SINE
@@ -1565,8 +1601,6 @@ natives: context [
 	arccosine*: func [
 		check?  [logic!]
 		radians [integer!]
-		/local
-			f	[red-float!]
 	][
 		#typecheck [arccosine radians]
 		arc-trans radians TYPE_COSINE
@@ -1575,8 +1609,6 @@ natives: context [
 	arctangent*: func [
 		check?  [logic!]
 		radians [integer!]
-		/local
-			f	[red-float!]
 	][
 		#typecheck [arctangent radians]
 		arc-trans radians TYPE_TANGENT
@@ -1730,8 +1762,6 @@ natives: context [
 		/local
 			arg	   [red-value!]
 			cframe [byte-ptr!]
-			err	   [red-object!]
-			id	   [integer!]
 			result [integer!]
 	][
 		#typecheck [try _all]
@@ -1866,18 +1896,14 @@ natives: context [
 			t-name [red-word!]
 			word   [red-word!]
 			tail   [red-word!]
-			id	   [integer!]
 			found? [logic!]
 	][
 		#typecheck [catch name]
 		found?: no
-		id:		0
-		arg:	stack/arguments
+		arg: stack/arguments
 		
-		if name <> -1 [
-			c-name: as red-word! arg + name
-			id: c-name/symbol
-		]
+		if name <> -1 [c-name: as red-word! arg + name]
+		
 		stack/mark-catch words/_body
 		catch RED_THROWN_THROW [interpreter/eval as red-block! arg yes]
 		t-name: as red-word! stack/arguments + 1
@@ -2204,8 +2230,6 @@ natives: context [
 		check? [logic!]
 		/local
 			word [red-word!]
-			ctx	 [red-context!]
-			node [node!]
 			s	 [series!]
 	][
 		#typecheck context?
@@ -2292,6 +2316,29 @@ natives: context [
 	][
 		#typecheck list-env
 		list-env
+	]
+
+	now*: func [
+		check?	[logic!]
+		year	[integer!]
+		month	[integer!]
+		day		[integer!]
+		time	[integer!]
+		zone	[integer!]
+		date	[integer!]
+		weekday	[integer!]
+		yearday	[integer!]
+		precise	[integer!]
+		utc		[integer!]
+		/local
+			dt	[red-date!]
+	][
+		#typecheck [now year month day time zone date weekday yearday precise utc]
+		if time = -1 [--NOT_IMPLEMENTED--]
+
+		dt: as red-date! stack/arguments
+		dt/header: TYPE_TIME
+		dt/time: platform/get-time utc >= 0 precise >= 0
 	]
 
 	;--- Natives helper functions ---
@@ -2425,13 +2472,60 @@ natives: context [
 		str	  [red-string!]
 		size  [integer!]
 		/local
-			v [red-value!]
 			i [integer!]
 	][
 		i: 1
 		while [i <= size][
 			_context/set (as red-word! _series/pick as red-series! words i null) _series/pick as red-series! str i null
 			i: i + 1
+		]
+	]
+	
+	remove-each-init: func [/local part [red-integer!]][
+		part: as red-integer! stack/arguments - 3
+		assert TYPE_OF(part) = TYPE_INTEGER
+		part/value: block/rs-length? as red-block! stack/arguments - 1
+	]
+
+	remove-each-next: func [
+		size  [integer!]								;-- nb of elements to remove
+		/local
+			arg		[red-value!]
+			bool	[red-logic!]
+			series	[red-series!]
+			pos		[red-series!]
+			part	[red-value!]
+	][
+		arg: stack/arguments
+		bool: as red-logic! arg
+		series: as red-series! arg - 2
+		part: either size = 1 [null][arg - 3]
+		
+		assert any [									;@@ replace with any-block?/any-string? check
+			TYPE_OF(series) = TYPE_BLOCK
+			TYPE_OF(series) = TYPE_HASH
+			TYPE_OF(series) = TYPE_PAREN
+			TYPE_OF(series) = TYPE_PATH
+			TYPE_OF(series) = TYPE_GET_PATH
+			TYPE_OF(series) = TYPE_SET_PATH
+			TYPE_OF(series) = TYPE_LIT_PATH
+			TYPE_OF(series) = TYPE_STRING
+			TYPE_OF(series) = TYPE_FILE
+			TYPE_OF(series) = TYPE_URL
+			TYPE_OF(series) = TYPE_VECTOR
+			TYPE_OF(series) = TYPE_BINARY
+			TYPE_OF(series) = TYPE_MAP
+			TYPE_OF(series) = TYPE_IMAGE
+		]
+
+		unless any [
+			TYPE_OF(arg) = TYPE_NONE
+			all [TYPE_OF(arg) = TYPE_LOGIC not bool/value]
+		][
+			series/head: series/head - size
+			assert series/head >= 0
+			pos: as red-series! actions/remove series as red-value! part
+			series/head: pos/head
 		]
 	]
 
@@ -2626,6 +2720,7 @@ natives: context [
 			:forever*
 			:foreach*
 			:forall*
+			:remove-each*
 			:func*
 			:function*
 			:does*
@@ -2706,6 +2801,7 @@ natives: context [
 			:set-env*
 			:get-env*
 			:list-env*
+			:now*
 		]
 	]
 

@@ -376,8 +376,6 @@ block: context [
 	push-only*: func [
 		size	[integer!]
 		return: [red-block!]
-		/local
-			blk [red-block!]
 	][
 		#if debug? = yes [if verbose > 0 [print-line "block/push-only*"]]
 
@@ -539,7 +537,6 @@ block: context [
 		spec	 [red-value!]
 		return:	 [red-block!]
 		/local
-			blk  [red-block!]
 			size [integer!]
 			int	 [red-integer!]
 	][
@@ -715,7 +712,6 @@ block: context [
 			slot	[red-value!]
 			slot2	[red-value!]
 			end		[red-value!]
-			end2	[red-value!]
 			result	[red-value!]
 			int		[red-integer!]
 			b		[red-block!]
@@ -795,7 +791,6 @@ block: context [
 					b: as red-block! value
 					s2: GET_BUFFER(b)
 					value: s2/offset + b/head
-					end2: s2/tail
 					(as-integer s2/tail - s2/offset) >> 4 - b/head
 				][0]
 			]
@@ -1086,7 +1081,6 @@ block: context [
 			step	[integer!]
 			int		[red-integer!]
 			blk2	[red-block!]
-			fun		[red-function!]
 			op		[integer!]
 			flags	[integer!]
 			offset	[integer!]
@@ -1200,7 +1194,6 @@ block: context [
 			hash	[red-hash!]
 			table	[node!]
 			int		[red-integer!]
-			p		[int-ptr!]
 			b		[red-block!]
 			s		[series!]
 			h		[integer!]
@@ -1210,7 +1203,6 @@ block: context [
 			slots	[integer!]
 			index	[integer!]
 			values?	[logic!]
-			head?	[logic!]
 			tail?	[logic!]
 			hash?	[logic!]
 	][
@@ -1271,7 +1263,6 @@ block: context [
 			blk/head: (as-integer s/tail - s/offset) >> size? cell!
 		]
 		h: blk/head
-		head?: zero? h
 		tail?: any [(s/offset + h = s/tail) append?]
 		slots: part * cnt
 		index: either append? [(as-integer s/tail - s/offset) >> 4][h]
@@ -1535,7 +1526,7 @@ block: context [
 			invert? [logic!]
 			both?	[logic!]
 			find?	[logic!]
-			skip?	[logic!]
+			append?	[logic!]
 			blk?	[logic!]
 			hash?	[logic!]
 	][
@@ -1557,7 +1548,7 @@ block: context [
 		blk1: as red-block! stack/arguments
 		blk2: blk1 + 1
 		len: rs-length? blk1
-		len: len + either op = OP_UNION [rs-length? blk2][0]
+		if op = OP_UNION [len: len + rs-length? blk2]
 		new: make-at as red-block! stack/push* len
 		table: _hashtable/init len new HASH_TABLE_HASH 1
 		n: 2
@@ -1586,16 +1577,16 @@ block: context [
 			]
 
 			while [value < tail] [			;-- iterate over first series
-				skip?: yes
+				append?: no
 				if check? [
-					find?: null <> _hashtable/get hash value 0 1 case? no no
+					find?: null <> _hashtable/get hash value 0 step case? no no
 					if invert? [find?: not find?]
 				]
 				if all [
 					find?
-					null = _hashtable/get table value 0 1 case? no no
+					null = _hashtable/get table value 0 step case? no no
 				][
-					skip?: no
+					append?: yes
 					_hashtable/put table rs-append new value
 				]
 
@@ -1605,7 +1596,7 @@ block: context [
 					all [value < tail i < step]
 				][
 					i: i + 1
-					unless skip? [
+					if append? [
 						key: rs-append new value
 						if hash? [_hashtable/put table key]
 					]

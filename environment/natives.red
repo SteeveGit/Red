@@ -105,6 +105,15 @@ forall: make native! [[
 	#get-definition NAT_FORALL
 ]
 
+remove-each: make native! [[
+		"Removes values for each block that returns true, returns removal count"
+		'word [word! block!] "Word or block of words to set each time"
+		data [series!] "The series to traverse (modified)"
+		body [block!] "Block to evaluate (return TRUE to remove)"
+	]
+	#get-definition NAT_REMOVE_EACH
+]
+
 func: make native! [[
 		"Defines a function with a given spec and body"
 		spec [block!]
@@ -754,7 +763,7 @@ wait: make native! [[
 ]
 
 checksum: make native! [[
-		"Computes a checksum, CRC, hash, or HMAC."
+		"Computes a checksum, CRC, hash, or HMAC"
 		data 	[binary! string! file!]
 		method	[word!]	"MD5 SHA1 SHA256 SHA384 SHA512 CRC32 TCP hash"
 		/with	"Extra value for HMAC key or hash table size; not compatible with TCP/CRC32 methods"
@@ -809,7 +818,7 @@ set-env: make native! [[
 
 get-env: make native! [[
 		"Returns the value of an OS environment variable (for current process)"
-		var		[any-string! any-word!] "Variable to set"
+		var		[any-string! any-word!] "Variable to get"
 		return: [string! none!]
 	]
 	#get-definition NAT_GET_ENV
@@ -820,4 +829,21 @@ list-env: make native! [[
 		return: [map!]
 	]
 	#get-definition NAT_LIST_ENV
+]
+
+now: make native! [[
+		"Returns date and time"
+		/year		"Returns year only"
+		/month		"Returns month only"
+		/day		"Returns day of the month only"
+		/time		"Returns time only"
+		/zone		"Returns time zone offset from UCT (GMT) only"
+		/date		"Returns date only"
+		/weekday	"Returns day of the week as integer (Monday is day 1)"
+		/yearday	"Returns day of the year (Julian)"
+		/precise	"High precision time"
+		/utc		"Universal time (no zone)"
+		return: [time!]					;@@ add date! when we have it
+	]
+	#get-definition NAT_NOW
 ]

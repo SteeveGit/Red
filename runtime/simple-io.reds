@@ -140,6 +140,11 @@ simple-io: context [
 					template	[int-ptr!]
 					return:		[integer!]
 				]
+				CreateDirectory: "CreateDirectoryW" [
+					pathname	[c-string!]
+					sa			[int-ptr!]
+					return:		[logic!]
+				]
 				ReadFile:	"ReadFile" [
 					file		[integer!]
 					buffer		[byte-ptr!]
@@ -177,7 +182,7 @@ simple-io: context [
 				]
 				CloseHandle:	"CloseHandle" [
 					obj			[integer!]
-					return:		[integer!]
+					return:		[logic!]
 				]
 				SetFilePointer: "SetFilePointer" [
 					file		[integer!]
@@ -550,6 +555,30 @@ simple-io: context [
 
 		]
 
+		#either OS = 'MacOSX [
+			#import [
+				LIBC-file cdecl [
+					lseek: "lseek" [
+						file		[integer!]
+						offset-lo	[integer!]
+						offset-hi	[integer!]
+						whence		[integer!]
+						return:		[integer!]
+					]
+				]
+			]
+		][
+			#import [
+				LIBC-file cdecl [
+					lseek: "lseek" [
+						file		[integer!]
+						offset		[integer!]
+						whence		[integer!]
+						return:		[integer!]
+					]
+				]
+			]
+		]
 		#import [
 			LIBC-file cdecl [
 				_access: "access" [
@@ -579,10 +608,10 @@ simple-io: context [
 					file		[integer!]
 					return:		[integer!]
 				]
-				lseek: "lseek" [
-					file		[integer!]
-					offset		[integer!]
-					whence		[integer!]
+				mkdir: "mkdir" [
+					pathname	[c-string!]
+					mode		[integer!]
+					return:		[integer!]
 				]
 				opendir: "opendir" [
 					filename	[c-string!]
@@ -615,7 +644,18 @@ simple-io: context [
 			]
 		]
 	]
-	
+
+	make-dir: func [
+		path	[c-string!]
+		return: [logic!]
+	][
+		#either OS = 'Windows [
+			CreateDirectory path null
+		][
+			zero? mkdir path 511			;-- 0777
+		]
+	]
+
 	open-file: func [
 		filename [c-string!]
 		mode	 [integer!]
@@ -713,10 +753,16 @@ simple-io: context [
 		file	[integer!]
 		offset	[integer!]
 	][
-		#either OS = 'Windows [
-			SetFilePointer file offset null SET_FILE_BEGIN
-		][
-			lseek file offset 0					;-- SEEK_SET
+		#case [
+			OS = 'Windows [
+				SetFilePointer file offset null SET_FILE_BEGIN
+			]
+			OS = 'MacOSX [
+				lseek file offset 0 0				;@@ offset is 64bit
+			]
+			true [
+				lseek file offset 0					;-- SEEK_SET
+			]
 		]
 	]
 
@@ -741,12 +787,12 @@ simple-io: context [
 	
 	close-file: func [
 		file	[integer!]
-		return:	[integer!]
+		return:	[logic!]
 	][
 		#either OS = 'Windows [
 			CloseHandle file
 		][
-			_close file
+			zero? _close file
 		]
 	]
 
@@ -793,6 +839,7 @@ simple-io: context [
 			val		[red-value!]
 			str		[red-string!]
 			len		[integer!]
+			type	[integer!]
 	][
 		unless unicode? [		;-- only command line args need to be checked
 			if filename/1 = #"^"" [filename: filename + 1]	;-- FIX: issue #1234
@@ -805,7 +852,12 @@ simple-io: context [
 		size: file-size? file
 
 		if size <= 0 [
-			print-line "*** Warning: empty file"
+			close-file file
+			val: stack/push*
+			string/rs-make-at val 1
+			type: either binary? [TYPE_BINARY][TYPE_STRING]
+			set-type val type
+			return val
 		]
 
 		if offset > 0 [
@@ -1721,8 +1773,6 @@ simple-io: context [
 					bin			[red-binary!]
 					stream		[integer!]
 					response	[integer!]
-					keys		[int-ptr!]
-					vals		[int-ptr!]
 					blk			[red-block!]
 			][
 				switch method [

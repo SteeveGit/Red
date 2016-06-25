@@ -349,7 +349,6 @@ OS-draw-line: func [
 	/local
 		pt		[tagPOINT]
 		nb		[integer!]
-		res		[integer!]
 		pair	[red-pair!]
 ][
 	pt: edges
@@ -364,7 +363,7 @@ OS-draw-line: func [
 		pair: pair + 1	
 	]
 	either GDI+? [
-		res: GdipDrawLinesI modes/graphics modes/gp-pen edges nb
+		GdipDrawLinesI modes/graphics modes/gp-pen edges nb
 	][
 		Polyline dc edges nb
 	]
@@ -402,7 +401,10 @@ OS-draw-fill-pen: func [
 	GDI+?: any [alpha? anti-alias? modes/alpha-pen?]
 
 	modes/brush?: not off?
-	either modes/brush-color <> color [
+	either any [
+		modes/brush-color <> color
+		modes/gp-brush <> 0								;-- always update brush in gdi+ mode
+	][
 		modes/brush-color: color
 		update-modes dc
 	][
@@ -451,10 +453,9 @@ gdiplus-draw-roundbox: func [
 	fill?	[logic!]
 	/local
 		path	[integer!]
-		res		[integer!]
 ][
 	path: 0
-	res: GdipCreatePath GDIPLUS_FILLMODE_ALTERNATE :path
+	GdipCreatePath GDIPLUS_FILLMODE_ALTERNATE :path
 	gdiplus-roundrect-path path x y width height radius
 	if fill? [
 		GdipFillPath modes/graphics modes/gp-brush path
@@ -468,6 +469,7 @@ OS-draw-box: func [
 	upper [red-pair!]
 	lower [red-pair!]
 	/local
+		t	   [integer!]
 		radius [red-integer!]
 		rad	   [integer!]
 ][
@@ -488,6 +490,8 @@ OS-draw-box: func [
 		]
 	][
 		either GDI+? [
+			if upper/x > lower/x [t: upper/x upper/x: lower/x lower/x: t]
+			if upper/y > lower/y [t: upper/y upper/y: lower/y lower/y: t]
 			unless zero? modes/gp-brush [				;-- fill rect
 				GdipFillRectangleI
 					modes/graphics
@@ -675,16 +679,37 @@ OS-draw-circle: func [
 	/local
 		rad-x [integer!]
 		rad-y [integer!]
+		w	  [integer!]
+		h	  [integer!]
+		f	  [red-float!]
 ][
-	either center + 1 = radius [						;-- center, radius
-		rad-x: radius/value
-		rad-y: rad-x
+	either TYPE_OF(radius) = TYPE_INTEGER [
+		either center + 1 = radius [					;-- center, radius
+			rad-x: radius/value
+			rad-y: rad-x
+		][
+			rad-y: radius/value							;-- center, radius-x, radius-y
+			radius: radius - 1
+			rad-x: radius/value
+		]
+		w: rad-x * 2
+		h: rad-y * 2
 	][
-		rad-y: radius/value								;-- center, radius-x, radius-y
-		radius: radius - 1
-		rad-x: radius/value
+		f: as red-float! radius
+		either center + 1 = radius [
+			rad-x: float/to-integer f/value + 0.75
+			rad-y: rad-x
+			w: float/to-integer f/value * 2.0
+			h: w
+		][
+			rad-y: float/to-integer f/value + 0.75
+			h: float/to-integer f/value * 2.0
+			f: f - 1
+			rad-x: float/to-integer f/value + 0.75
+			w: float/to-integer f/value * 2.0
+		]
 	]
-	do-draw-ellipse dc center/x - rad-x center/y - rad-y rad-x * 2 rad-y * 2
+	do-draw-ellipse dc center/x - rad-x center/y - rad-y w h
 ]
 
 OS-draw-ellipse: func [
@@ -1037,7 +1062,9 @@ OS-draw-grad-pen: func [
 		clr		[red-tuple!]
 		pt		[tagPOINT]
 		color	[int-ptr!]
+		last-c	[int-ptr!]
 		pos		[pointer! [float32!]]
+		last-p	[pointer! [float32!]]
 		n		[integer!]
 		delta	[float!]
 		p		[float!]
@@ -1066,16 +1093,16 @@ OS-draw-grad-pen: func [
 			default			[break]
 		]
 		switch n [
-			0	[angle: as float32! p rotate?: yes]
-			1	[sx: as float32! p scale?: yes]
-			2	[sy: as float32! p scale?: yes]
+			0	[if p <> 0.0 [angle: as float32! p rotate?: yes]]
+			1	[if p <> 1.0 [sx: as float32! p scale?: yes]]
+			2	[if p <> 1.0 [sy: as float32! p scale?: yes]]
 		]
 		n: n + 1
 	]
 
 	pt: edges
-	color: colors
-	pos: colors-pos
+	color: colors + 1
+	pos: colors-pos + 1
 	delta: 1.0 / integer/to-float count - 1
 	p: 0.0
 	head: as red-value! int
@@ -1085,13 +1112,29 @@ OS-draw-grad-pen: func [
 		next: head + 1 
 		if TYPE_OF(next) = TYPE_FLOAT [head: next f: as red-float! head p: f/value]
 		pos/value: as float32! p
-		p: p + delta
+		if next <> head [p: p + delta]
 		head: head + 1
 		color: color + 1
 		pos: pos + 1
 	]
-	pos: pos - 1
-	pos/value: as float32! 1.0
+
+	last-p: pos - 1
+	last-c: color - 1
+	pos: pos - count
+	color: color - count
+	if pos/value > as float32! 0.0 [			;-- first one should be always 0.0
+		colors-pos/value: as float32! 0.0
+		colors/value: color/value
+		color: colors
+		pos: colors-pos
+		count: count + 1
+	]
+	if last-p/value < as float32! 1.0 [			;-- last one should be always 1.0
+		last-c/2: last-c/value
+		last-p/2: as float32! 1.0
+		count: count + 1
+	]
+
 	brush: 0
 	either type = linear [
 		pt/x: x + start
@@ -1099,8 +1142,8 @@ OS-draw-grad-pen: func [
 		pt: pt + 1
 		pt/x: x + stop
 		pt/y: y
-		GdipCreateLineBrushI edges pt colors/1 colors/count 0 :brush
-		GdipSetLinePresetBlend brush colors colors-pos count
+		GdipCreateLineBrushI edges pt color/1 color/count 0 :brush
+		GdipSetLinePresetBlend brush color pos count
 		if rotate? [GdipRotateLineTransform brush angle GDIPLUS_MATRIXORDERAPPEND]
 		if scale? [GdipScaleLineTransform brush sx sy GDIPLUS_MATRIXORDERAPPEND]
 	][
@@ -1111,14 +1154,32 @@ OS-draw-grad-pen: func [
 			type = radial  [GdipAddPathEllipseI brush x - n y - n stop stop]
 			type = diamond [GdipAddPathRectangleI brush x - n y - n stop stop]
 		]
+
+		GdipCreateMatrix :n
+		if rotate? [GdipRotateMatrix n angle GDIPLUS_MATRIXORDERPREPEND]
+		if scale?  [GdipScaleMatrix n sx sy GDIPLUS_MATRIXORDERPREPEND]
+		scale?: any [rotate? scale?]
+		if scale? [							;@@ transform path will move it
+			GdipTransformPath brush n
+			GdipDeleteMatrix n
+		]
+
 		n: brush
 		GdipCreatePathGradientFromPath n :brush
 		GdipDeletePath n
-		GdipSetPathGradientCenterColor brush colors/value
-		reverse-int-array colors count
-		GdipSetPathGradientPresetBlend brush colors colors-pos count
-		if rotate? [GdipRotatePathGradientTransform brush angle GDIPLUS_MATRIXORDERAPPEND]
-		if scale? [GdipScalePathGradientTransform brush sx sy GDIPLUS_MATRIXORDERAPPEND]
+		GdipSetPathGradientCenterColor brush color/value
+		reverse-int-array color count
+		GdipSetPathGradientPresetBlend brush color pos count
+
+		if any [							;@@ move the shape back to the right position
+			all [type = radial scale?]
+			all [type = diamond rotate?]
+		][
+			GdipGetPathGradientCenterPointI brush pt
+			sx: as float32! integer/to-float x - pt/x
+			sy: as float32! integer/to-float y - pt/y
+			GdipTranslatePathGradientTransform brush sx sy GDIPLUS_MATRIXORDERAPPEND
+		]
 	]
 
 	GDI+?: yes
