@@ -537,11 +537,7 @@ natives: context [
 					#call [system/lexer/transcode str none none]
 					DO_EVAL_BLOCK
 				]
-				TYPE_FILE [
-					str: as red-string! simple-io/read as red-file! arg null null no no
-					#call [system/lexer/transcode str none none]
-					DO_EVAL_BLOCK
-				]
+				TYPE_FILE [#call [do-file as red-file! arg]]
 				TYPE_ERROR [
 					stack/throw-error as red-object! arg
 				]
@@ -604,12 +600,19 @@ natives: context [
 		_only? [integer!]
 		_some? [integer!]
 		/local
-			w	  [red-word!]
-			value [red-value!]
-			blk	  [red-block!]
-			type  [integer!]
-			only? [logic!]
-			some? [logic!]
+			w	   [red-word!]
+			value  [red-value!]
+			res	   [red-value!]
+			blk	   [red-block!]
+			obj	   [red-object!]
+			ctx	   [red-context!]
+			old	   [red-value!]
+			slot   [red-value!]
+			type   [integer!]
+			s	   [series!]
+			node   [node!]
+			only?  [logic!]
+			some?  [logic!]
 	][
 		#typecheck [set any? case? _only? _some?]
 		w: as red-word! stack/arguments
@@ -647,7 +650,22 @@ natives: context [
 				set-many blk value block/rs-length? blk only? some?
 				stack/set-last value
 			]
-			default [stack/set-last _context/set w value]
+			default [
+				node: w/ctx
+				ctx: TO_CTX(node)
+				s: as series! ctx/self/value
+				obj: as red-object! s/offset + 1
+				
+				either all [TYPE_OF(obj) = TYPE_OBJECT obj/on-set <> null][
+					slot: _context/get w
+					old: stack/push slot
+					copy-cell value slot
+					object/fire-on-set obj w old value
+				][
+					_context/set w value
+				]
+				stack/set-last value
+			]
 		]
 	]
 
@@ -1472,6 +1490,40 @@ natives: context [
 		]
 		res/header: TYPE_LOGIC
 		res
+	]
+
+	sign?*: func [
+		check?  [logic!]
+		return: [red-integer!]
+		/local
+			i   [red-integer!]
+			f	[red-float!]
+			res [red-value!]
+			ret [integer!]
+	][
+		#typecheck sign?
+		res: stack/arguments
+		ret: 0
+		switch TYPE_OF(res) [							;@@ Add money! pair! 
+			TYPE_INTEGER [
+				i: as red-integer! stack/arguments
+				ret: case [
+					i/value > 0 [ 1]
+					i/value < 0 [-1]
+					i/value = 0 [ 0]
+				]
+			]
+			TYPE_FLOAT TYPE_TIME [
+				f: as red-float! stack/arguments
+				ret: case [
+					f/value > 0.0 [ 1]
+					f/value < 0.0 [-1]
+					f/value = 0.0 [ 0]
+				]
+			]
+			default [ERR_EXPECT_ARGUMENT((TYPE_OF(res)) 1)]
+		]
+		integer/box ret
 	]
 
 	max*: func [
@@ -2802,6 +2854,7 @@ natives: context [
 			:get-env*
 			:list-env*
 			:now*
+			:sign?*
 		]
 	]
 

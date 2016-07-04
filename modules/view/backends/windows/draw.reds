@@ -22,11 +22,13 @@ modes: declare struct! [
 	font-color		[integer!]
 	bitmap			[handle!]
 	graphics		[integer!]								;-- gdiplus graphics
+	gp-state		[integer!]
 	gp-pen			[integer!]								;-- gdiplus pen
 	gp-pen-saved	[integer!]
 	gp-brush		[integer!]								;-- gdiplus brush
 	gp-font			[integer!]								;-- gdiplus font
 	gp-font-brush	[integer!]
+	image-attr		[integer!]								;-- gdiplus image attributes
 	pen?			[logic!]
 	brush?			[logic!]
 	on-image?		[logic!]								;-- drawing on image?
@@ -36,8 +38,6 @@ modes: declare struct! [
 ]
 
 paint: declare tagPAINTSTRUCT
-
-
 max-colors: 256												;-- max number of colors for gradient
 max-edges:  1000											;-- max number of edges for a polygone
 edges: as tagPOINT allocate max-edges * (size? tagPOINT)	;-- polygone edges buffer
@@ -70,32 +70,12 @@ update-gdiplus-font: func [dc [handle!] /local font [integer!]][
 	modes/gp-font: font
 ]
 
-update-gdiplus-modes: func [
-	dc [handle!]
-	/local
-		handle [integer!]
-][
-	either modes/pen? [
-		either zero? modes/gp-pen-saved [
-			handle: modes/gp-pen
-			GdipSetPenColor handle to-gdiplus-color modes/pen-color
-			GdipSetPenWidth handle as float32! integer/to-float modes/pen-width
-			if modes/pen-join <> -1 [
-				OS-draw-line-join dc modes/pen-join
-			]
+update-gdiplus-modes: func [][
+	update-gdiplus-pen
+	update-gdiplus-brush
+]
 
-			if modes/pen-cap <> -1 [
-				OS-draw-line-cap dc modes/pen-cap
-			]
-		][
-			modes/gp-pen: modes/gp-pen-saved
-			modes/gp-pen-saved: 0
-		]
-	][
-		modes/gp-pen-saved: modes/gp-pen
-		modes/gp-pen: 0
-	]
-
+update-gdiplus-brush: func [/local handle [integer!]][
 	handle: 0
 	unless zero? modes/gp-brush [
 		GdipDeleteBrush modes/gp-brush
@@ -105,6 +85,41 @@ update-gdiplus-modes: func [
 		GdipCreateSolidFill to-gdiplus-color modes/brush-color :handle
 		modes/gp-brush: handle
 	]
+]
+
+update-gdiplus-pen: func [/local handle [integer!]][
+	either modes/pen? [
+		either zero? modes/gp-pen-saved [
+			handle: modes/gp-pen
+			GdipSetPenColor handle to-gdiplus-color modes/pen-color
+			GdipSetPenWidth handle as float32! integer/to-float modes/pen-width
+			if modes/pen-join <> -1 [
+				OS-draw-line-join null modes/pen-join
+			]
+
+			if modes/pen-cap <> -1 [
+				OS-draw-line-cap null modes/pen-cap
+			]
+		][
+			modes/gp-pen: modes/gp-pen-saved
+			modes/gp-pen-saved: 0
+		]
+	][
+		modes/gp-pen-saved: modes/gp-pen
+		modes/gp-pen: 0
+	]
+]
+
+update-brush: func [dc [handle!] /local handle [handle!]][
+	unless null? modes/brush [DeleteObject modes/brush]
+	modes/brush: either modes/brush? [
+		handle: CreateSolidBrush modes/brush-color
+		handle
+	][
+		handle: GetStockObject NULL_BRUSH
+		null
+	]
+	SelectObject dc handle
 ]
 
 update-pen: func [
@@ -162,23 +177,12 @@ update-pen: func [
 
 update-modes: func [
 	dc [handle!]
-	/local
-		handle	[handle!]
 ][
 	either GDI+? [
-		update-gdiplus-modes dc
+		update-gdiplus-modes
 	][
 		update-pen dc
-
-		unless null? modes/brush [DeleteObject modes/brush]
-		modes/brush: either modes/brush? [
-			handle: CreateSolidBrush modes/brush-color
-			handle
-		][
-			handle: GetStockObject NULL_BRUSH
-			null
-		]
-		SelectObject dc handle
+		update-brush dc
 	]
 ]
 
@@ -197,27 +201,28 @@ draw-begin: func [
 		hBackDC  [handle!]
 		graphics [integer!]
 ][
-	modes/pen:			null
-	modes/brush:		null
-	modes/pen-width:	1
-	modes/pen-style:	PS_SOLID
-	modes/pen-color:	0						;-- default: black
-	modes/pen-join:		-1
-	modes/pen-cap:		-1
-	modes/brush-color:	-1
-	modes/font-color:	-1
-	modes/gp-brush:		0
-	modes/gp-pen:		0
-	modes/gp-pen-saved: 0
-	modes/gp-font:		0
-	modes/gp-font-brush: 0
-	modes/on-image?:	no
-	modes/pen?:			yes
-	modes/brush?:		no
-	modes/alpha-pen?:	no
-	modes/alpha-brush?:	no
-	modes/font-color?:	no
-	dc:					null
+	modes/pen:				null
+	modes/brush:			null
+	modes/pen-width:		1
+	modes/pen-style:		PS_SOLID
+	modes/pen-color:		0						;-- default: black
+	modes/pen-join:			-1
+	modes/pen-cap:			-1
+	modes/brush-color:		-1
+	modes/font-color:		-1
+	modes/gp-brush:			0
+	modes/gp-pen:			0
+	modes/gp-pen-saved:		0
+	modes/gp-font:			0
+	modes/gp-font-brush:	0
+	modes/image-attr:		0
+	modes/on-image?:		no
+	modes/pen?:				yes
+	modes/brush?:			no
+	modes/alpha-pen?:		no
+	modes/alpha-brush?:		no
+	modes/font-color?:		no
+	dc:						null
 
 	rect: declare RECT_STRUCT
 	either null? hWnd [
@@ -292,6 +297,7 @@ draw-end: func [
 	unless zero? modes/gp-brush	[GdipDeleteBrush modes/gp-brush]
 	unless zero? modes/gp-font-brush [GdipDeleteBrush modes/gp-font-brush]
 	unless zero? modes/gp-font	[GdipDeleteFont modes/gp-font]
+	unless zero? modes/image-attr [GdipDisposeImageAttributes modes/image-attr]
 	unless null? modes/pen		[DeleteObject modes/pen]
 	unless null? modes/brush	[DeleteObject modes/brush]
 
@@ -375,16 +381,17 @@ OS-draw-pen: func [
 	off?	[logic!]
 	alpha? [logic!]
 ][
+	if all [off? modes/pen? <> off?][exit]
+
 	modes/alpha-pen?: alpha?
 	GDI+?: any [alpha? anti-alias? modes/alpha-brush?]
 
-	modes/pen?: not off?
-	either modes/pen-color <> color [
+	if any [modes/pen-color <> color modes/pen? = off?][
+		modes/pen?: not off?
 		modes/pen-color: color
-		update-modes dc
-	][
-		unless GDI+? [update-modes dc]
+		either GDI+? [update-gdiplus-pen][update-pen dc]
 	]
+
 	unless modes/font-color? [
 		if GDI+? [update-gdiplus-font-color color]
 		unless modes/on-image? [SetTextColor dc color]
@@ -397,18 +404,15 @@ OS-draw-fill-pen: func [
 	off?   [logic!]
 	alpha? [logic!]
 ][
+	if all [off? modes/brush? <> off?][exit]
+
 	modes/alpha-brush?: alpha?
 	GDI+?: any [alpha? anti-alias? modes/alpha-pen?]
 
-	modes/brush?: not off?
-	either any [
-		modes/brush-color <> color
-		modes/gp-brush <> 0								;-- always update brush in gdi+ mode
-	][
+	if any [modes/brush-color <> color modes/brush? = off?][
+		modes/brush?: not off?
 		modes/brush-color: color
-		update-modes dc
-	][
-		unless GDI+? [update-modes dc]
+		either GDI+? [update-gdiplus-brush][update-brush dc]
 	]
 ]
 
@@ -626,7 +630,7 @@ OS-draw-spline: func [
 	]
 	;if nb = max-edges [fire error]
 
-	unless GDI+? [update-gdiplus-modes dc]					;-- force to use GDI+
+	unless GDI+? [update-gdiplus-modes]					;-- force to use GDI+
 
 	if modes/brush? [
 		GdipFillClosedCurveI
@@ -1005,13 +1009,26 @@ OS-draw-image: func [
 		y		[integer!]
 		width	[integer!]
 		height	[integer!]
+		w		[integer!]
+		h		[integer!]
+		attr	[integer!]
+		color	[integer!]
 		pts		[tagPOINT]
 ][
+	attr: 0
+	if key-color <> null [
+		attr: modes/image-attr
+		if zero? attr [GdipCreateImageAttributes :attr]
+		color: to-gdiplus-color key-color/array1
+		GdipSetImageAttributesColorKeys attr 0 true color color
+	]
+	w: IMAGE_WIDTH(image/size)
+	h: IMAGE_HEIGHT(image/size)
 	either null? start [x: 0 y: 0][x: start/x y: start/y]
 	case [
 		start = end [
-			width:  IMAGE_WIDTH(image/size)
-			height: IMAGE_HEIGHT(image/size)
+			width:  w
+			height: h
 		]
 		start + 1 = end [					;-- two control points
 			width: end/x - x
@@ -1025,18 +1042,17 @@ OS-draw-image: func [
 				pts: pts + 1
 				start: start + 1
 			]
-			GdipDrawImagePointsI modes/graphics as-integer image/node edges 3
+			GdipDrawImagePointsRectI
+				modes/graphics as-integer image/node edges 3
+				0 0 w h GDIPLUS_UNIT_PIXEL attr 0 0
 			exit
 		]
 		true [0]							;@@ TBD four control points
 	]
 	GdipDrawImageRectRectI
-		modes/graphics
-		as-integer image/node
-		x y width height
-		0 0 IMAGE_WIDTH(image/size) IMAGE_HEIGHT(image/size)
-		GDIPLUS_UNIT_PIXEL
-		0 0 0
+		modes/graphics as-integer image/node
+		x y width height 0 0 w h
+		GDIPLUS_UNIT_PIXEL attr 0 0
 ]
 
 OS-draw-grad-pen: func [
@@ -1190,4 +1206,104 @@ OS-draw-grad-pen: func [
 	][
 		GdipSetPenBrushFill modes/gp-pen brush
 	]
+]
+
+OS-matrix-rotate: func [
+	angle	[red-integer!]
+	center	[red-pair!]
+][
+	GDI+?: yes
+	if angle <> as red-integer! center [OS-matrix-translate 0 - center/x 0 - center/y]
+	GdipRotateWorldTransform modes/graphics get-float32 angle GDIPLUS_MATRIXORDERAPPEND
+	if angle <> as red-integer! center [OS-matrix-translate center/x center/y]
+]
+
+OS-matrix-scale: func [
+	sx		[red-integer!]
+	sy		[red-integer!]
+][
+	GDI+?: yes
+	GdipScaleWorldTransform modes/graphics get-float32 sx get-float32 sy GDIPLUS_MATRIXORDERAPPEND
+]
+
+OS-matrix-translate: func [
+	x	[integer!]
+	y	[integer!]
+][
+	GDI+?: yes
+	GdipTranslateWorldTransform
+		modes/graphics
+		as float32! integer/to-float x
+		as float32! integer/to-float y
+		GDIPLUS_MATRIXORDERAPPEND
+]
+
+OS-matrix-skew: func [
+	sx		[red-integer!]
+	sy		[red-integer!]
+	/local
+		m	[integer!]
+		x	[float32!]
+		y	[float32!]
+		u	[float32!]
+		z	[float32!]
+][
+	m: 0
+	u: as float32! 1.0
+	z: as float32! 0.0
+	x: as float32! system/words/tan degree-to-radians get-float sx TYPE_TANGENT
+	y: as float32! either sx = sy [0.0][system/words/tan degree-to-radians get-float sy TYPE_TANGENT]
+	GdipCreateMatrix2 u y x u z z :m
+	GdipMultiplyWorldTransform modes/graphics m GDIPLUS_MATRIXORDERAPPEND
+	GdipDeleteMatrix m
+]
+
+OS-matrix-transform: func [
+	rotate		[red-integer!]
+	scale		[red-integer!]
+	translate	[red-pair!]
+	/local
+		center	[red-pair!]
+][
+	center: as red-pair! either rotate + 1 = scale [rotate][rotate + 1]
+	OS-matrix-rotate rotate center
+	OS-matrix-scale scale scale + 1
+	OS-matrix-translate translate/x translate/y
+]
+
+OS-matrix-push: func [/local state [integer!]][
+	state: 0
+	GdipSaveGraphics modes/graphics :state
+	modes/gp-state: state
+]
+
+OS-matrix-pop: func [][GdipRestoreGraphics modes/graphics modes/gp-state]
+
+OS-matrix-reset: func [][GdipResetWorldTransform modes/graphics]
+
+OS-matrix-invert: func [/local m [integer!]][
+	m: 0
+	GdipGetWorldTransform modes/graphics :m
+	GdipInvertMatrix m
+	GdipSetWorldTransform modes/graphics m
+]
+
+OS-matrix-set: func [
+	blk		[red-block!]
+	/local
+		m	[integer!]
+		val [red-integer!]
+][
+	m: 0
+	val: as red-integer! block/rs-head blk
+	GdipCreateMatrix2
+		get-float32 val
+		get-float32 val + 1
+		get-float32 val + 2
+		get-float32 val + 3
+		get-float32 val + 4
+		get-float32 val + 5
+		:m
+	GdipMultiplyWorldTransform modes/graphics m GDIPLUS_MATRIXORDERAPPEND
+	GdipDeleteMatrix m
 ]

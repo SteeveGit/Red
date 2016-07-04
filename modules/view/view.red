@@ -179,7 +179,7 @@ on-face-deep-change*: function [owner word target action new index part state fo
 					system/view/platform/on-change-facet owner word target action new index part
 				]
 			]
-			;check-reactions owner word
+			system/reactivity/check/only owner word
 		][
 			if any [								;-- drop multiple changes on same facet
 				none? state/3
@@ -597,7 +597,10 @@ show: function [
 		face/state: reduce [obj 0 none false]
 	]
 
-	if face/pane [foreach f face/pane [show/with f face]]
+	if face/pane [
+		foreach f face/pane [show/with f face]
+		system/view/platform/refresh-window face/state/1
+	]
 	;check-all-reactions face
 	
 	if all [new? face/type = 'window face/visible?][
@@ -666,6 +669,7 @@ center-face: function [
 	]
 	either parent [
 		face/offset: parent/size - face/size / 2
+		if face/type = 'window [face/offset: face/offset + parent/offset]
 	][
 		print "CENTER-FACE: face has no parent!"		;-- temporary check
 	]

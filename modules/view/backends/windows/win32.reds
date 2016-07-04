@@ -1681,6 +1681,22 @@ DwmIsCompositionEnabled!: alias function! [
 		]
 	]
 	"gdiplus.dll" stdcall [
+		GdipCreateImageAttributes: "GdipCreateImageAttributes" [
+			attr		[int-ptr!]
+			return:		[integer!]
+		]
+		GdipDisposeImageAttributes: "GdipDisposeImageAttributes" [
+			attr		[integer!]
+			return:		[integer!]
+		]
+		GdipSetImageAttributesColorKeys: "GdipSetImageAttributesColorKeys" [
+			attr		[integer!]
+			type		[integer!]
+			enable?		[logic!]
+			colorLow	[integer!]
+			colorHigh	[integer!]
+			return:		[integer!]
+		]
 		GdipCreateMatrix: "GdipCreateMatrix" [
 			matrix		[int-ptr!]
 			return:		[integer!]
@@ -1707,6 +1723,75 @@ DwmIsCompositionEnabled!: alias function! [
 			sx			[float32!]
 			sy			[float32!]
 			matrixorder	[integer!]
+			return:		[integer!]
+		]
+		GdipInvertMatrix: "GdipInvertMatrix" [
+			matrix		[integer!]
+		]
+		GdipCreateMatrix2: "GdipCreateMatrix2" [
+			m11			[float32!]
+			m12			[float32!]
+			m21			[float32!]
+			m22			[float32!]
+			dx			[float32!]
+			dy			[float32!]
+			matrix		[int-ptr!]
+			return:		[int-ptr!]
+		]
+		GdipTransformMatrixPointsI: "GdipTransformMatrixPointsI" [
+			matrix		[integer!]
+			pts			[tagPOINT]
+			count		[integer!]
+			return:		[integer!]
+		]
+		GdipSaveGraphics: "GdipSaveGraphics" [
+			graphics	[integer!]
+			state		[int-ptr!]
+			return:		[integer!]
+		]
+		GdipRestoreGraphics: "GdipRestoreGraphics" [
+			graphics	[integer!]
+			state		[integer!]
+			return:		[integer!]
+		]
+		GdipRotateWorldTransform: "GdipRotateWorldTransform" [
+			graphics	[integer!]
+			angle		[float32!]
+			matrixorder [integer!]
+			return:		[integer!]
+		]
+		GdipTranslateWorldTransform: "GdipTranslateWorldTransform" [
+			graphics	[integer!]
+			dx			[float32!]
+			dy			[float32!]
+			matrixorder	[integer!]
+			return:		[integer!]
+		]
+		GdipScaleWorldTransform: "GdipScaleWorldTransform" [
+			graphics	[integer!]
+			sx			[float32!]
+			sy			[float32!]
+			matrixorder	[integer!]
+			return:		[integer!]
+		]
+		GdipMultiplyWorldTransform: "GdipMultiplyWorldTransform" [
+			graphics	[integer!]
+			matrix		[integer!]
+			matrixorder	[integer!]
+			return:		[integer!]
+		]
+		GdipSetWorldTransform: "GdipSetWorldTransform" [
+			graphics	[integer!]
+			matrix		[integer!]
+			return:		[integer!]
+		]
+		GdipGetWorldTransform: "GdipGetWorldTransform" [
+			graphics	[integer!]
+			matrix		[int-ptr!]
+			return:		[integer!]
+		]
+		GdipResetWorldTransform: "GdipResetWorldTransform" [
+			graphics	[integer!]
 			return:		[integer!]
 		]
 		GdipTransformPath: "GdipTransformPath" [
@@ -1790,11 +1875,19 @@ DwmIsCompositionEnabled!: alias function! [
 			texture		[int-ptr!]
 			return:		[integer!]
 		]
-		GdipDrawImagePointsI: "GdipDrawImagePointsI" [
+		GdipDrawImagePointsRectI: "GdipDrawImagePointsRectI" [
 			graphics	[integer!]
 			image		[integer!]
 			points		[tagPOINT]
 			count		[integer!]
+			srcx		[integer!]
+			srcy		[integer!]
+			srcwidth	[integer!]
+			srcheight	[integer!]
+			srcUnit		[integer!]
+			attribute	[integer!]
+			callback	[integer!]
+			data		[integer!]
 			return:		[integer!]
 		]
 		GdipSetLinePresetBlend: "GdipSetLinePresetBlend" [
