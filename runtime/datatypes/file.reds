@@ -185,7 +185,9 @@ file: context [
 		t: type/value
 		switch t [
 			TYPE_STRING
-			TYPE_URL [
+			TYPE_URL
+			TYPE_TAG
+			TYPE_EMAIL [
 				set-type copy-cell as cell! spec as cell! type t
 			]
 			default  [--NOT_IMPLEMENTED--]
@@ -281,13 +283,12 @@ file: context [
 		return:	[red-value!]
 	][
 		if any [
-			OPTION?(seek)
 			OPTION?(allow)
 			OPTION?(as-arg)
 		][
 			--NOT_IMPLEMENTED--
 		]
-		simple-io/write as red-file! dest data part binary? append?
+		simple-io/write as red-file! dest data part seek binary? append?
 		as red-value! unset-value
 	]
 

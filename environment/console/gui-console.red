@@ -137,7 +137,7 @@ gui-console-ctx: context [
 	apply-cfg: does [
 		win/offset:		 cfg/win-pos
 		win/size:		 cfg/win-size
-		console/font:	 make font! [name: cfg/font-name size: cfg/font-size]
+		console/font:	 make font! [name: cfg/font-name size: cfg/font-size anti-alias?: no]
 		set-font-color	 cfg/font-color
 		set-background	 cfg/background
 		set-buffer-lines cfg/buffer-lines
@@ -230,6 +230,14 @@ gui-console-ctx: context [
 			on-resizing: func [face [object!] event [event!]][
 				console/size: event/offset
 				unless system/view/auto-sync? [show face]
+			]
+			on-key-down: func [face [object!] event [event!]][
+				if 'control = first event/flags [
+					switch event/key [
+						187	[console/font/size: console/font/size + 1]	;-- ctrl + =
+						189	[console/font/size: console/font/size - 1]	;-- ctrl + -
+					]
+				]
 			]
 		]
 		pane: reduce [console]

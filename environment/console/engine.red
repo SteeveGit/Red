@@ -58,10 +58,12 @@ system/console: context [
 					remove file
 					remove back tail file
 				]
-				unless src: attempt [read to file! file][
+				file: to-red-file file
+				unless src: attempt [read file][
 					print "*** Error: cannot access argument file"
 					;quit/return -1
 				]
+				change-dir first split-path file
 			]
 			src
 		]
@@ -91,14 +93,18 @@ system/console: context [
 		parse buffer [
 			any [
 				escaped
-				| remove [#";" [thru lf | to end]]
+				| pos: #";" if (zero? count/2) :pos remove [skip [thru lf | to end]]
 				| #"[" (if zero? count/2 [count/1: count/1 + 1])
 				| #"]" (if zero? count/2 [count/1: count/1 - 1])
 				| #"(" (if zero? count/2 [count/3: count/3 + 1])
 				| #")" (if zero? count/2 [count/3: count/3 - 1])
 				| dbl-quote any [escaped | dbl-quote break | skip]
-				| #"{" (count/2: count/2 + 1)
-				  any [escaped | #"}" (count/2: count/2 - 1) break | skip]
+				| #"{" (count/2: count/2 + 1) any [
+					escaped
+					| #"{" (count/2: count/2 + 1)
+					| #"}" (count/2: count/2 - 1) break
+					| skip
+				]
 				| #"}" (count/2: count/2 - 1)
 				| skip
 			]
