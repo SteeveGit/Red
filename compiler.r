@@ -600,11 +600,13 @@ red: context [
 		]
 	]
 	
-	get-RS-type-ID: func [name [word! datatype!] /local type][	;-- Red type name to R/S type ID
-		name: head remove back tail form name			;-- remove ending #"!"
+	get-RS-type-ID: func [name [word! datatype!] /word /local type][ ;-- Red type name to R/S type ID
+		name: either datatype? name [form name][
+			head remove back tail form name				;-- remove ending #"!"
+		]
 		replace/all name #"-" #"_"
 		type: to word! uppercase head insert name "TYPE_"
-		select extracts/definitions type
+		either word [type][select extracts/definitions type]
 	]
 	
 	make-typeset: func [
@@ -2704,19 +2706,18 @@ red: context [
 		cnt: 1
 		parse body [									;-- build a [value index] pairs list
 			any [
-				value: skip (repend list [value/1 cnt])
-				to block! skip (cnt: cnt + 1)
+				block! (cnt: cnt + 1)
+				| value: skip (repend list [value/1 cnt])
 			]
 		]
 		idx: redbin/emit-block list
 		
-		emit-open-frame 'select							;-- SWITCH lookup frame
-		emit compose [block/push get-root (idx)]
-		insert-lf -2
+		emit-open-frame 'select-key*					;-- SWITCH lookup frame
 		emit arg
-		emit [integer/push 2]							;-- /skip 2
+		emit compose [block/push get-root (idx)]
+		insert-lf -3
+		emit [select-key* no]
 		insert-lf -2
-		emit-action/with 'select [-1 0 -1 -1 -1 -1 2 -1 -1] ;-- select/only/skip
 		emit-close-frame
 		
 		emit [switch integer/get-any*]
@@ -3673,17 +3674,22 @@ red: context [
 	]
 	
 	process-get-directive: func [
-		path code [block!] /local obj fpath ctx blk idx
+		spec code [block!] /local obj fpath ctx blk idx
 	][
-		unless path? path [
-			throw-error ["invalid #get argument:" spec]
-		]
-		set [obj fpath] object-access? path
-		ctx: second obj: find objects obj
-		unless idx: get-word-index/with last path ctx [return none]
-		remove/part code 2
-		blk: [red/word/get-in (decorate-exec-ctx ctx) (idx)]
-		insert code compose blk
+		switch/default type?/word spec [
+			path! [
+				set [obj fpath] object-access? spec
+				ctx: second obj: find objects obj
+				unless idx: get-word-index/with last spec ctx [return none]
+				remove/part code 2
+				blk: [red/word/get-in (decorate-exec-ctx ctx) (idx)]
+				insert code compose blk
+			]
+			word! [
+				remove/part code 2
+				insert code compose [red/word/get (decorate-exec-ctx decorate-symbol spec)]
+			]
+		][throw-error ["invalid #get argument:" spec]]
 	]
 	
 	process-in-directive: func [
