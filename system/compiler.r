@@ -821,8 +821,8 @@ system-dialect: make-profilable context [
 			]
 			if any [
 				all [type/1 = 'function! not find [function! integer!] ctype/1]
-				all [find [float! float64!] ctype/1 not any-float? type]
-				all [find [float! float64!] type/1  not any-float? ctype]
+				all [find [float! float64!] ctype/1 not any [any-float? type type/1 = 'integer!]]
+				all [find [float! float64!] type/1  not any [any-float? ctype ctype/1 = 'integer!]]
 				all [type/1 = 'float32! not find [float! float64! integer!] ctype/1]
 				all [ctype/1 = 'byte! find [c-string! pointer! struct!] type/1]
 				all [
@@ -846,7 +846,7 @@ system-dialect: make-profilable context [
 					]
 				]
 				integer! [
-					if find [byte! logic!] type/1 [
+					if find [byte! logic! float! float32! float64!] type/1 [
 						value: to integer! value
 					]
 				]
@@ -854,6 +854,11 @@ system-dialect: make-profilable context [
 					switch type/1 [
 						byte! 	 [value: value <> null]
 						integer! [value: value <> 0]
+					]
+				]
+				float! float32! [
+					if type/1 = 'integer! [
+						value: to decimal! value
 					]
 				]
 			]
@@ -2963,8 +2968,8 @@ system-dialect: make-profilable context [
 				]
 				if all [
 					variable boxed						;-- process casting if result assigned to variable
-					find [logic! integer!] last-type/1
-					find [logic! integer!] boxed/type	;-- fixes #967
+					find [logic! integer! float! float32! float64!] last-type/1
+					find [logic! integer! float! float32! float64!] boxed/type	;-- fixes #967
 					last-type/1 <> boxed/type
 				][
 					emitter/target/emit-casting boxed no ;-- insert runtime type casting if required
