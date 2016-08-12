@@ -97,7 +97,7 @@ unicode: context [
 		return:  [c-string!]
 		/local
 			s	 [series!]
-			node [node!]
+			beg  [byte-ptr!]
 			buf	 [byte-ptr!]
 			p	 [byte-ptr!]
 			p4	 [int-ptr!]
@@ -113,10 +113,9 @@ unicode: context [
 		unless len/value = -1 [
 			if len/value < part [part: len/value]
 		]
-		node: alloc-bytes unit << 1 * (1 + part)	;@@ TBD: mark this buffer as protected!
-		s: 	  as series! node/value
-		buf:  as byte-ptr! s/offset
-		
+		buf: allocate unit << 1 * (1 + part)	;@@ TBD: mark this buffer as protected!
+		beg: buf
+
 		p:	  string/rs-head str
 		tail: p + (part << (unit >> 1))
 		
@@ -137,8 +136,8 @@ unicode: context [
 		]
 		buf/1: null-byte
 
-		len/value: as-integer buf - (as byte-ptr! s/offset)
-		as-c-string s/offset
+		len/value: as-integer buf - beg
+		as-c-string beg
 	]
 	
 	Latin1-to-UCS2: func [
@@ -393,7 +392,7 @@ unicode: context [
 			cp: decode-utf8-char src :used
 			if cp = -1 [								;-- premature exit if buffer incomplete
 				s/tail: as cell! either unit = UCS-4 [buf4][buf1]	;-- position s/tail at end of loaded characters (no NUL terminator)
-				remain/value: count						;-- return the number of unprocessed bytes
+				if remain <> null [remain/value: count]				;-- return the number of unprocessed bytes
 				return node
 			]
 
@@ -602,10 +601,9 @@ unicode: context [
 						either all [src/1 = #"^M" src/2 = null-byte][
 							size: size - 1
 						][
-							p/value: src/1
-							p: p + 1
-							p/value: null-byte
-							p: p + 1
+							p/1: src/1
+							p/2: src/2
+							p: p + 2
 						]
 						src: src + 2
 						cnt: cnt - 1
