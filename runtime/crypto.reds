@@ -1,9 +1,9 @@
 Red/System [
 	Title:	"cryptographic API"
-	Author: "Qingtian Xie"
+	Author: "Qingtian Xie" "Yongzhao Huang"
 	File: 	%crypto.reds
 	Tabs:	4
-	Rights: "Copyright (C) 2016 Qingtian Xie. All rights reserved."
+	Rights: "Copyright (C) 2016-2018 Red Foundation. All rights reserved."
 	License: {
 		Distributed under the Boost Software License, Version 1.0.
 		See https://github.com/red/red/blob/master/BSL-License.txt
@@ -16,20 +16,24 @@ crypto: context [
 	_md5:		0
 	_sha1:		0
 	_crc32: 	0
+	_adler32:	0
 	_sha256:	0
 	_sha384:	0
 	_sha512:	0
 	_hash:		0
+	errno:		as int-ptr! 0
 	
 	init: does [
 		_tcp:		symbol/make "tcp"
 		_md5:		symbol/make "md5"
 		_sha1:		symbol/make "sha1"
 		_crc32: 	symbol/make "crc32"
+		_adler32:	symbol/make "adler32"
 		_sha256:	symbol/make "sha256"
 		_sha384:	symbol/make "sha384"
 		_sha512:	symbol/make "sha512"
 		_hash:		symbol/make "hash"
+		#if OS <> 'Windows [errno: get-errno-ptr]
 	]
 
 	#enum crypto-algorithm! [
@@ -43,8 +47,7 @@ crypto: context [
 		ALG_HASH
 	]
 
-	crc32-table: declare int-ptr!
-	crc32-table: null
+	crc32-table: as int-ptr! 0
 
 	make-crc32-table: func [
 		/local
@@ -159,7 +162,7 @@ crypto: context [
 		alg-sym		[integer!]	"Algorithm symbol value. e.g., _crc32"
 		return:		[byte-ptr!]
 	][
-		either any [alg-sym = _crc32  alg-sym = _tcp  alg-sym = _hash][
+		either any [alg-sym = _crc32  alg-sym = _tcp  alg-sym = _hash alg-sym = _adler32][
 			print-line "The selected algorithm doesn't support HMAC calculation"
 			return as byte-ptr! ""
 		][
@@ -263,6 +266,7 @@ crypto: context [
 		any [
 			sym = _tcp
 			sym = _crc32
+			sym = _adler32
 			sym = _md5
 			sym = _sha1
 			sym = _sha256
@@ -271,9 +275,160 @@ crypto: context [
 			sym = _hash
 		]
 	]
-	
-#switch OS [
-	Windows [
+
+	#define A32-BASE 65521
+	#define A32-NMAX 5552
+
+	adler32: func [
+		data    [byte-ptr!]
+		length  [integer!]
+		return: [integer!]
+		/local
+			buf  [byte-ptr!]
+			s1   [integer!]
+			s2 	 [integer!]
+			i    [integer!]
+			k    [integer!]
+	][
+		buf: data
+		s1: 1
+		s2: 0
+		while [length > 0] [
+			if length < A32-NMAX [
+				k: length
+			]
+			if length >= A32-NMAX [
+				k: A32-NMAX
+			]
+			i: k / 16
+			if i <> 0 [
+				until [
+					s1: s1 + (as-integer buf/1)
+					s2: s2 + s1
+					s1: s1 + (as-integer buf/2)
+					s2: s2 + s1
+					s1: s1 + (as-integer buf/3)
+					s2: s2 + s1
+					s1: s1 + (as-integer buf/4)
+					s2: s2 + s1
+					s1: s1 + (as-integer buf/5)
+					s2: s2 + s1
+					s1: s1 + (as-integer buf/6)
+					s2: s2 + s1
+					s1: s1 + (as-integer buf/7)
+					s2: s2 + s1
+					s1: s1 + (as-integer buf/8)
+					s2: s2 + s1
+					s1: s1 + (as-integer buf/9)
+					s2: s2 + s1
+					s1: s1 + (as-integer buf/10)
+					s2: s2 + s1
+					s1: s1 + (as-integer buf/11)
+					s2: s2 + s1
+					s1: s1 + (as-integer buf/12)
+					s2: s2 + s1
+					s1: s1 + (as-integer buf/13)
+					s2: s2 + s1
+					s1: s1 + (as-integer buf/14)
+					s2: s2 + s1
+					s1: s1 + (as-integer buf/15)
+					s2: s2 + s1
+					s1: s1 + (as-integer buf/16)
+					s2: s2 + s1
+					i: i - 1
+					buf: buf + 16
+					i = 0
+				]
+			]
+			i: k % 16
+			until [
+				k: as integer! buf/value
+				s1: s1 + k
+				buf: buf + 1
+				s2: s2 + s1
+				i: i - 1
+				i = 0
+			]
+
+			s1: s1 % A32-BASE
+			s2: s2 % A32-BASE
+
+			length: length - k
+		]
+		k: s2 << 16
+		k or s1
+	]
+
+	#if OS <> 'Windows [
+	#import [
+		LIBC-file cdecl [
+			open2: "open" [
+				path	[c-string!]
+				flags	[integer!]
+				return: [integer!]
+			]
+			_read:	"read" [
+				fd		[integer!]
+				buf	    [byte-ptr!]
+				size	[integer!]
+				return:	[integer!]
+			]
+			_close:	"close" [
+				fd		[integer!]
+				return:	[integer!]
+			]
+		]
+	]
+
+	#case [
+		any [OS = 'FreeBSD OS = 'macOS] [
+			#import [
+			LIBC-file cdecl [
+				get-errno-ptr: "__error" [
+					return: [int-ptr!]
+				]
+			]]
+		]
+		true [
+			#import [
+			LIBC-file cdecl [
+				get-errno-ptr: "__errno_location" [
+					return: [int-ptr!]
+				]
+			]]
+		]
+	]
+
+	urandom: func [
+		buffer	[byte-ptr!]							;-- buffer to receive data
+		size	[integer!]							;-- size of the buffer
+		return: [logic!]
+		/local
+			fd	[integer!]
+			n	[integer!]
+	][
+		fd: open2 "/dev/urandom" O_RDONLY
+		if fd < 0 [return false]
+
+		;@@ cache fd
+		while [size > 0][
+			until [
+			 	n: _read fd buffer size
+			 	not all [n < 0 errno/value = 4]		;-- 4: EINTR
+			]
+			if n < 0 [
+				_close fd
+				return false
+			]
+			buffer: buffer + n
+			size: size - n
+		]
+		_close fd
+		true
+	]]
+
+	#case [
+	OS = 'Windows [
 		#import [
 			"advapi32.dll" stdcall [
 				CryptAcquireContext: "CryptAcquireContextW" [
@@ -316,6 +471,12 @@ crypto: context [
 					flags		[integer!]
 					return:		[integer!]
 				]
+				CryptGenRandom: "CryptGenRandom" [
+					handle		[integer!]
+					size		[integer!]
+					buffer		[byte-ptr!]
+					return:		[logic!]
+				]
 			]
 			#if debug? = yes [
 				"kernel32.dll" stdcall [
@@ -335,21 +496,30 @@ crypto: context [
 		#define CALG_SHA_256	        0000800Ch
 		#define CALG_SHA_384	        0000800Dh
 		#define CALG_SHA_512	        0000800Eh
-		
+
+		provider: 0
+		init-provider: does [CryptAcquireContext :provider null null PROV_RSA_AES CRYPT_VERIFYCONTEXT]
+
+		urandom: func [
+			buffer	[byte-ptr!]							;-- buffer to receive data
+			size	[integer!]							;-- size of the buffer
+			return: [logic!]
+		][
+			CryptGenRandom provider size buffer
+		]
+
 		get-digest: func [
 			data	[byte-ptr!]
 			len		[integer!]
 			type	[crypto-algorithm!]
 			return:	[byte-ptr!]							;-- caller should free it
 			/local
-				provider [integer!]
 				handle	[integer!]
 				hash	[byte-ptr!]
 				size	[integer!]
 		][
 			; The hash buffer needs to be big enough to hold the longest result.
 			hash: allocate 64							;-- caller should free it
-			provider: 0
 			handle: 0
 			size: alg-digest-size type
 			type: switch type [							;-- Convert type from enum to Windows code
@@ -364,17 +534,15 @@ crypto: context [
 				]
 			]
 			
-			CryptAcquireContext :provider null null PROV_RSA_AES CRYPT_VERIFYCONTEXT
 			CryptCreateHash provider type null 0 :handle
 			CryptHashData handle data len 0
 			CryptGetHashParam handle HP_HASHVAL hash :size 0
 			CryptDestroyHash handle
-			CryptReleaseContext provider 0
+			;CryptReleaseContext provider 0				;@@ release it when exit Red
 			hash
 		]
-
 	]
-	Linux [
+	all [OS = 'Linux target <> 'ARM][
 		;-- Using User-space interface for Kernel Crypto API
 		;-- Exists in kernel starting from Linux 2.6.38
 		#import [
@@ -397,21 +565,63 @@ crypto: context [
 					addrlen	[int-ptr!]
 					return:	[integer!]
 				]
-				read:	"read" [
+				_write: "write" [
 					fd		[integer!]
-					buf	    [byte-ptr!]
-					size	[integer!]
-					return:	[integer!]
+					buffer	[c-string!]
+					count	[integer!]
+					return: [integer!]
 				]
-				close:	"close" [
-					fd		[integer!]
+				syscall: "syscall" [
+					[variadic]
 					return:	[integer!]
 				]
 			]
 		]
 
+		#define SYS_getrandom			355		;-- system call for x86
+		#define GRND_NONBLOCK			1
+		#define GRND_RANDOM				2
 		#define AF_ALG 					38
 		#define SOCK_SEQPACKET 			5
+
+		has_getrandom?: yes						;-- need linux kernel 3.17 or newer
+
+		getrandom: func [
+			buffer		[byte-ptr!]
+			size		[integer!]
+			blocking?	[logic!]
+			return:		[integer!]				;-- 1: success, 0: no getrandom(), -1: error
+			/local
+				n		[integer!]
+				flags	[integer!]
+				err		[integer!]
+		][
+			unless has_getrandom? [return 0]
+
+			flags: either blocking? [0][GRND_NONBLOCK]
+			while [size > 0][
+				n: syscall [SYS_getrandom buffer size flags]
+
+				err: errno/value
+				if n < 0 [
+					if any [err = ENOSYS err = EPERM][
+						has_getrandom?: no
+						return 0
+					]
+					if all [err = EAGAIN not blocking?][
+						return 0
+					]
+					if err = EINTR [
+						;@@ check SIGINT, that means it's from keyboard, should return -1
+						continue
+					]
+					return -1
+				]
+				buffer: buffer + n
+				size: size - n
+			]
+			1
+		]
 
 		;struct sockaddr_alg {					;-- 88 bytes
 		;    __u16   salg_family;
@@ -455,25 +665,25 @@ crypto: context [
 			fd: socket AF_ALG SOCK_SEQPACKET 0
 			sock-bind fd sa 88
 			opfd: accept fd null null
-			write opfd as c-string! data len
-			read opfd hash alg-digest-size type
-			close opfd
-			close fd
+			_write opfd as c-string! data len
+			_read opfd hash alg-digest-size type
+			_close opfd
+			_close fd
 			free sa
 			hash
 		]
 	]
-	#default [											;-- MacOSX,Android,Syllable,FreeBSD
+	true [											;-- macOS,Android,Syllable,FreeBSD,Linux-ARM
 		;-- Using OpenSSL Crypto library
 		#switch OS [
-			MacOSX [
+			macOS [
 				#define LIBCRYPTO-file "libcrypto.dylib"
 			]
 			FreeBSD [
-				#define LIBCRYPTO-file "libcrypto.so.7"
+				#define LIBCRYPTO-file "libcrypto.so.8"
 			]
 			#default [
-				#define LIBCRYPTO-file "libcrypto.so"
+				#define LIBCRYPTO-file "libcrypto.so.1.0.0"
 			]
 		]
 		#import [

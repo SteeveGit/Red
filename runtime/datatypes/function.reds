@@ -3,7 +3,7 @@ Red/System [
 	Author:  "Nenad Rakocevic"
 	File: 	 %function.reds
 	Tabs:	 4
-	Rights:  "Copyright (C) 2012-2015 Nenad Rakocevic. All rights reserved."
+	Rights:  "Copyright (C) 2012-2018 Red Foundation. All rights reserved."
 	License: {
 		Distributed under the Boost Software License, Version 1.0.
 		See https://github.com/red/red/blob/master/BSL-License.txt
@@ -37,7 +37,7 @@ _function: context [
 		fun:  as red-function! base - 4
  		path: as red-path! base - 3
  		
-		stack/mark-func words/_anon
+		stack/mark-func-body words/_anon
 		
 		s: as series! fun/spec/value
 		
@@ -219,6 +219,8 @@ _function: context [
 		/local
 			s	   [series!]
 			native [red-native!]
+			saved  [node!]
+			fctx   [red-context!]
 			call ocall
 	][
 		s: as series! fun/more/value
@@ -227,15 +229,30 @@ _function: context [
 		either zero? native/code [
 			interpreter/eval-function fun as red-block! s/offset
 		][
-			either ctx = global-ctx [
-				call: as function! [] native/code
-				call
-				0										;FIXME: required to pass compilation
-			][
-				ocall: as function! [octx [node!]] native/code
-				ocall ctx
-				0
+			fctx: GET_CTX(fun)
+			saved: fctx/values
+			catch RED_THROWN_ERROR [
+				either ctx = global-ctx [
+					call: as function! [] native/code
+					call
+					0									;FIXME: required to pass compilation
+				][
+					ocall: as function! [octx [node!]] native/code
+					ocall ctx
+					0
+				]
 			]
+			fctx/values: saved
+			
+			switch system/thrown [
+				RED_THROWN_ERROR
+				RED_THROWN_BREAK
+				RED_THROWN_CONTINUE
+				RED_THROWN_THROW	[re-throw]			;-- let exception pass through
+				RED_THROWN_RETURN	[stack/unwind-last]
+				default [0]								;-- else, do nothing
+			]
+			system/thrown: 0
 		]
 	]
 
@@ -473,29 +490,6 @@ _function: context [
 		list/node
 	]
 	
-	find-local-ref: func [
-		spec	[red-block!]
-		return: [logic!]								;-- return TRUE if /local is found
-		/local
-			value [red-value!]
-			tail  [red-value!]
-			ref	  [red-refinement!]
-			sym	  [integer!]
-	][
-		value: block/rs-head spec
-		tail:  block/rs-tail spec
-		sym: refinements/local/symbol
-		
-		while [value < tail][
-			if TYPE_OF(value) = TYPE_REFINEMENT [
-				ref: as red-refinement! value
-				if sym = symbol/resolve ref/symbol [return yes]
-			]
-			value: value + 1
-		]
-		no
-	]
-	
 	collect-word: func [
 		value  [red-value!]
 		list   [red-block!]
@@ -609,7 +603,6 @@ _function: context [
 	][
 		list: block/push* 8
 		ignore: block/clone spec no no
-		block/rs-append ignore as red-value! refinements/local
 		
 		value:  as red-value! refinements/extern		;-- process optional /extern
 		extern: as red-block! block/find spec value null no no no no null null no no no no
@@ -652,6 +645,7 @@ _function: context [
 				TYPE_WORD 	  [0]						;-- do nothing
 				TYPE_REFINEMENT
 				TYPE_GET_WORD
+				TYPE_LIT_WORD
 				TYPE_SET_WORD [
 					value/header: TYPE_WORD				;-- convert it to a word!
 				]
@@ -665,7 +659,7 @@ _function: context [
 		collect-deep list ignore body
 		
 		if 0 < block/rs-length? list [
-			unless find-local-ref spec [
+			unless local-ref? spec [
 				block/rs-append spec as red-value! refinements/local
 			]
 			block/rs-append-block spec list
@@ -782,10 +776,7 @@ _function: context [
 						next < end
 						TYPE_OF(next) = TYPE_BLOCK
 					][
-						fire [
-							TO_ERROR(script bad-func-def)
-							value
-						]
+						fire [TO_ERROR(script bad-func-def) value]
 					]
 					value: next
 				]
@@ -796,14 +787,55 @@ _function: context [
 					value: value + 1
 				]
 				default [
-					fire [
-						TO_ERROR(script bad-func-def)
-						value
-					]
+					fire [TO_ERROR(script bad-func-def) value]
 				]
 			]
 		]
 		check-duplicates spec
+	]
+	
+	local-ref?: func [
+		spec	[red-block!]
+		return: [logic!]
+	][
+		0 <> count-locals spec/node spec/head
+	]
+
+
+	count-locals: func [
+		node	[node!]
+		offset	[integer!]
+		return: [integer!]
+		/local
+			value  [red-value!]
+			tail   [red-value!]
+			ref	   [red-refinement!]
+			s	   [series!]
+			sym	   [integer!]
+			cnt	   [integer!]
+			count? [logic!]
+	][
+		s: as series! node/value
+		value:  s/offset + offset
+		tail:   s/tail
+		sym: 	refinements/local/symbol
+		count?: no
+		cnt:	0
+		
+		while [value < tail][
+			switch TYPE_OF(value) [
+				TYPE_REFINEMENT [
+					unless count? [
+						ref: as red-refinement! value
+						if sym = symbol/resolve ref/symbol [count?: yes]
+					]
+				]
+				TYPE_WORD [if count? [cnt: cnt + 1]]
+				default	  [0]
+			]
+			value: value + 1
+		]
+		cnt
 	]
 	
 	init-locals: func [
@@ -881,7 +913,39 @@ _function: context [
 		fun/ctx
 	]
 		
-	;-- Actions -- 
+	;-- Actions --
+	
+	make: func [
+		proto	[red-value!]
+		list	[red-block!]
+		type	[integer!]
+		return:	[red-function!]
+		/local
+			spec [red-block!]
+			body [red-block!]
+	][
+		#if debug? = yes [if verbose > 0 [print-line "function/make"]]
+		
+		if any [
+			TYPE_OF(list) <> TYPE_BLOCK
+			2 > block/rs-length? list
+		][
+			fire [TO_ERROR(script bad-func-def)	list]
+		]
+		spec: as red-block! block/rs-head list
+		
+		if TYPE_OF(spec) <> TYPE_BLOCK [
+			fire [TO_ERROR(script bad-func-def)	list]
+		]
+		validate spec
+		body: spec + 1
+		
+		if TYPE_OF(body) <> TYPE_BLOCK [
+			fire [TO_ERROR(script bad-func-def)	list]
+		]
+		push spec body null 0 null
+		as red-function! stack/get-top
+	]
 	
 	reflect: func [
 		fun		[red-function!]
@@ -937,18 +1001,17 @@ _function: context [
 		return: [integer!]
 		/local
 			s	  [series!]
-			blk	  [red-block!]
+			blk	  [red-block! value]
 			value [red-value!]
 	][
 		#if debug? = yes [if verbose > 0 [print-line "function/mold"]]
 
 		string/concatenate-literal buffer "func "
 		
-		blk: as red-block! stack/push*
 		blk/header: TYPE_BLOCK
 		blk/head: 0
 		blk/node: fun/spec
-		part: block/mold blk buffer only? all? flat? arg part - 5 indent	;-- spec
+		part: block/mold blk buffer no all? flat? arg part - 5 indent	;-- spec
 		
 		s: as series! fun/more/value
 		value: s/offset
@@ -956,7 +1019,7 @@ _function: context [
 			string/concatenate-literal buffer " none"
 			part - 5
 		][
-			block/mold as red-block! s/offset buffer only? all? flat? arg part indent	;-- body
+			block/mold as red-block! s/offset buffer no all? flat? arg part indent	;-- body
 		]
 	]
 
@@ -975,6 +1038,7 @@ _function: context [
 		if type <> TYPE_FUNCTION [RETURN_COMPARE_OTHER]
 		switch op [
 			COMP_EQUAL
+			COMP_FIND
 			COMP_SAME
 			COMP_STRICT_EQUAL
 			COMP_NOT_EQUAL
@@ -995,7 +1059,7 @@ _function: context [
 			TYPE_CONTEXT
 			"function!"
 			;-- General actions --
-			null			;make
+			:make
 			null			;random
 			:reflect
 			null			;to

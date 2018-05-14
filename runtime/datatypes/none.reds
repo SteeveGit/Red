@@ -3,7 +3,7 @@ Red/System [
 	Author:  "Nenad Rakocevic"
 	File: 	 %none.reds
 	Tabs:	 4
-	Rights:  "Copyright (C) 2011-2015 Nenad Rakocevic. All rights reserved."
+	Rights:  "Copyright (C) 2011-2018 Red Foundation. All rights reserved."
 	License: {
 		Distributed under the Boost Software License, Version 1.0.
 		See https://github.com/red/red/blob/master/BSL-License.txt
@@ -52,14 +52,14 @@ none: context [
 		
 	;-- Actions -- 
 
-	make: func [
+	to: func [
 		proto	 [red-value!]
 		spec	 [red-value!]
 		return:	 [red-none!]
 		/local
 			cell [red-none!]
 	][
-		#if debug? = yes [if verbose > 0 [print-line "none/make"]]
+		#if debug? = yes [if verbose > 0 [print-line "none/to"]]
 
 		cell: as red-none! stack/push*
 		cell/header: TYPE_NONE							;-- implicit reset of all header flags
@@ -110,7 +110,8 @@ none: context [
 		if type <> TYPE_NONE [RETURN_COMPARE_OTHER]
 		switch op [
 			COMP_EQUAL
-			COMP_SAME 
+			COMP_SAME
+			COMP_FIND
 			COMP_STRICT_EQUAL
 			COMP_NOT_EQUAL
 			COMP_SORT
@@ -197,10 +198,10 @@ none: context [
 			TYPE_VALUE
 			"none!"
 			;-- General actions --
-			:make
+			:to				;make
 			null			;random
 			null			;reflect
-			null			;to
+			:to
 			:form
 			:mold
 			null			;eval-path

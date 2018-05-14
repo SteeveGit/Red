@@ -3,11 +3,117 @@ Red/System [
 	Author: "Xie Qingtian"
 	File: 	%camera.reds
 	Tabs: 	4
-	Rights: "Copyright (C) 2015 Nenad Rakocevic. All rights reserved."
+	Rights: "Copyright (C) 2015-2018 Red Foundation. All rights reserved."
 	License: {
 		Distributed under the Boost Software License, Version 1.0.
 		See https://github.com/red/red/blob/master/BSL-License.txt
 	}
+]
+
+#define VFW_S_NOPREVIEWPIN		0004027Eh
+
+CLSID_SystemDeviceEnum:			[62BE5D10h 11D060EBh A0003BBDh 86CE11C9h]
+CLSID_VideoInputDeviceCategory: [860BB310h 11D05D01h A0003BBDh 86CE11C9h]
+CLSID_CaptureGraphBuilder2:		[BF87B6E1h 11D08C27h AA00F0B3h C5613700h]
+CLSID_FilterGraph:				[E436EBB3h 11CE524Fh 2000539Fh 70A70BAFh]
+
+IID_ICreateDevEnum:				[29840822h 11D05B84h A0003BBDh 86CE11C9h]
+IID_IPropertyBag: 				[55272A00h 11CE42CBh AA003581h 51B84B00h]
+IID_IBaseFilter:				[56A86895h 11CE0AD4h 20003AB0h 70A70BAFh]
+IID_ICaptureGraphBuilder2:		[93E5A4E0h 11D22D50h A000FAABh 8DE3C6C9h]
+IID_IGraphBuilder:				[56A868A9h 11CE0AD4h 20003AB0h 70A70BAFh]
+IID_IVideoWindow:				[56A868B4h 11CE0AD4h 20003AB0h 70A70BAFh]
+IID_IMediaControl:				[56A868B1h 11CE0AD4h 20003AB0h 70A70BAFh]
+
+PIN_CATEGORY_PREVIEW:			[FB6C4282h 11D10353h 00005F90h BA16CCC0h]
+MEDIATYPE_Video:				[73646976h 00100000h AA000080h 719B3800h]
+MEDIATYPE_Interleaved:			[73766169h 00100000h AA000080h 719B3800h]
+
+ICaptureGraphBuilder2: alias struct! [
+	QueryInterface			[QueryInterface!]
+	AddRef					[AddRef!]
+	Release					[Release!]
+	SetFiltergraph			[function! [this [this!] pfg [this!] return: [integer!]]]
+	GetFiltergraph			[integer!]
+	SetOutputFileName		[integer!]
+	FindInterface			[integer!]
+	RenderStream			[RenderStream!]
+	ControlStream			[integer!]
+	AllocCapFile			[integer!]
+	CopyCaptureFile			[integer!]
+	FindPin					[integer!]
+]
+
+IGraphBuilder: alias struct! [
+	QueryInterface			[QueryInterface!]
+	AddRef					[AddRef!]
+	Release					[Release!]
+	AddFilter				[function! [this [this!] pFilter [this!] pName [c-string!] return: [integer!]]]
+]
+
+IMediaControl: alias struct! [
+	QueryInterface			[QueryInterface!]
+	AddRef					[AddRef!]
+	Release					[Release!]
+	GetTypeInfoCount		[integer!]
+	GetTypeInfo				[integer!]
+	GetIDsOfNames			[integer!]
+	Invoke					[integer!]
+	Run						[function! [this [this!] return: [integer!]]]
+	Pause					[function! [this [this!] return: [integer!]]]
+	Stop					[function! [this [this!] return: [integer!]]]
+	GetState				[integer!]
+	RenderFile				[integer!]
+	;... other funcs we don't use
+]
+
+IVideoWindow: alias struct! [
+	QueryInterface			[QueryInterface!]
+	AddRef					[AddRef!]
+	Release					[Release!]
+	GetTypeInfoCount		[integer!]
+	GetTypeInfo				[integer!]
+	GetIDsOfNames			[integer!]
+	Invoke					[integer!]
+	put_Caption				[integer!]
+	get_Caption				[integer!]
+	put_WindowStyle			[function! [this [this!] style [integer!] return: [integer!]]]
+	get_WindowStyle			[integer!]
+	put_WindowStyleEx		[integer!]
+	get_WindowStyleEx		[integer!]
+	put_AutoShow			[integer!]
+	get_AutoShow			[integer!]
+	put_WindowState			[integer!]
+	get_WindowState			[integer!]
+	put_BackgroundPalette	[integer!]
+	get_BackgroundPalette	[integer!]
+	put_Visible				[function! [this [this!] show? [integer!] return: [integer!]]]
+	get_Visible				[integer!]
+	put_Left				[integer!]
+	get_Left				[integer!]
+	put_Width				[integer!]
+	get_Width				[integer!]
+	put_Top					[integer!]
+	get_Top					[integer!]
+	put_Height				[integer!]
+	get_Height				[integer!]
+	put_Owner				[function! [this [this!] hWnd [int-ptr!] return: [integer!]]]
+	get_Owner				[integer!]
+	put_MessageDrain		[integer!]
+	get_MessageDrain		[integer!]
+	get_BorderColor			[integer!]
+	put_BorderColor			[integer!]
+	get_FullScreenMode		[integer!]
+	put_FullScreenMode		[integer!]
+	SetWindowForeground		[integer!]
+	NotifyOwnerMessage		[integer!]
+	SetWindowPosition		[function! [this [this!] left [integer!] top [integer!] width [integer!] height [integer!] return: [integer!]]]
+	GetWindowPosition		[integer!]
+	GetMinIdealImageSize	[integer!]
+	GetMaxIdealImageSize	[integer!]
+	GetRestorePosition		[integer!]
+	HideCursor				[integer!]
+	IsCursorHidden			[integer!]
 ]
 
 camera!: alias struct! [
@@ -23,24 +129,33 @@ camera!: alias struct! [
 	dev6		[this!]
 	dev7		[this!]
 	dev8		[this!]
+	num			[integer!]
 ]
 
 init-camera: func [
 	hWnd	[handle!]
 	data	[red-block!]
+	sel		[red-integer!]
 	open?	[logic!]
 	/local
 		cam [camera!]
 		val [integer!] 
 ][
 	cam: as camera! allocate size? camera!				;@@ need to be freed
+	zero-memory as byte-ptr! cam size? camera!
 	val: collect-camera cam data
-	either zero? val [free as byte-ptr! cam][
-		init-graph cam 0
-		build-preview-graph cam hWnd
-		toggle-preview hWnd open?
+	if zero? val [
+		free as byte-ptr! cam
+		SetWindowLong hWnd wc-offset - 4 0
+		exit
 	]
+
 	SetWindowLong hWnd wc-offset - 4 val
+	if TYPE_OF(sel) = TYPE_INTEGER [
+		if select-camera hWnd sel/value - 1 [
+			toggle-preview hWnd true
+		]
+	]
 ]
 
 free-graph: func [cam [camera!] /local interface [IUnknown]][
@@ -159,7 +274,7 @@ build-preview-graph: func [
 
 toggle-preview: func [
 	handle		[handle!]
-	enable?		[logic!]
+	enabled?	[logic!]
 	/local
 		this	[interface!]
 		cam		[camera!]
@@ -175,7 +290,7 @@ toggle-preview: func [
 	hr: graph/QueryInterface cam/graph IID_IMediaControl this
 	if hr >= 0 [
 		mc: as IMediaControl this/ptr/vtbl
-		either enable? [
+		either enabled? [
 			hr: mc/Run this/ptr
 			if hr < 0 [mc/Stop this/ptr]
 		][
@@ -188,14 +303,22 @@ toggle-preview: func [
 select-camera: func [
 	handle	[handle!]
 	idx		[integer!]
+	return: [logic!]
 	/local
 		cam [camera!]
 ][
 	cam: as camera! GetWindowLong handle wc-offset - 4
+	if any [idx < 0 idx >= cam/num][
+		fire [TO_ERROR(access cannot-open) integer/push idx + 1]
+	]
 	teardown-graph cam
 	free-graph cam
 	init-graph cam idx
-	build-preview-graph cam handle
+	either zero? build-preview-graph cam handle [true][
+		teardown-graph cam
+		free-graph cam
+		false
+	]
 ]
 
 collect-camera: func [
@@ -218,6 +341,7 @@ collect-camera: func [
 		size	[integer!]
 		dev-ptr [int-ptr!]
 		fetched [integer!]
+		cnt		[integer!]
 ][
 	IDev:  declare interface!
 	IEnum: declare interface!
@@ -241,6 +365,7 @@ collect-camera: func [
 	var/data1: 8 << 16									;-- var.vt = VT_BSTR
 	dev-ptr: (as int-ptr! cam) + 4
 	fetched: 0
+	cnt: 0
 
 	hr: em/Next IEnum/ptr 1 IM :fetched
 	either zero? hr [block/make-at data 2][return 0]
@@ -257,6 +382,7 @@ collect-camera: func [
 				unicode/load-utf16 as c-string! var/data3 size str no
 				dev-ptr/value: as-integer IM/ptr
 				dev-ptr: dev-ptr + 1
+				cnt: cnt + 1
 				moniker/AddRef IM/ptr
 			]
 			bag/Release IBag/ptr
@@ -265,6 +391,7 @@ collect-camera: func [
 		hr: em/Next IEnum/ptr 1 IM :fetched
 		hr <> 0
 	]
+	cam/num: cnt
 	em/Release IEnum/ptr
 	as-integer cam
 ]

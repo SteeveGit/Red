@@ -3,7 +3,7 @@ REBOL [
 	Author:  "Nenad Rakocevic"
 	File: 	 %return-test.reds
 	Tabs:	 4
-	Rights:  "Copyright (C) 2011-2015 Nenad Rakocevic. All rights reserved."
+	Rights:  "Copyright (C) 2011-2018 Red Foundation. All rights reserved."
 	License: "BSD-3 - https://github.com/red/red/blob/origin/BSD-3-License.txt"
 ]
 
@@ -21,7 +21,7 @@ change-dir %../
 	--clean
 	
 	--compile-this "Red/System [] foo: func [return: [integer!]][until [return]]"
-	--assert-msg? "*** Compilation Error: missing argument"
+	--assert-msg? "*** Compilation Error: return is missing an argument"
 	--clean
 	
 	--compile-this "Red/System [] foo: func [return: [integer!]][until [return true]]"

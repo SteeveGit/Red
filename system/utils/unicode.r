@@ -3,12 +3,12 @@ REBOL [
 	Author:  "Qingtian Xie"
 	File: 	 %unicode.r
 	Tabs:	 4
-	Rights:  "Copyright (C) 2011-2015 Qingtian Xie. All rights reserved."
+	Rights:  "Copyright (C) 2011-2018 Red Foundation. All rights reserved."
 	License: "BSD-3 - https://github.com/red/red/blob/master/BSD-3-License.txt"
 ]
 
 utf8-to-utf16: func [s [string!] /length /local m cp result cnt][
-	result: make string! (length? s) * 2
+	result: make string! (1 + length? s) * 2
 	cnt: 0
 	while [not tail? s][
 		cp: first s

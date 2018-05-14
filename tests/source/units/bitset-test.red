@@ -3,7 +3,7 @@
 	Author:  "Nenad Rakocevic & Peter W A Wood"
 	File: 	 %bitset-test.red
 	Tabs:	 4
-	Rights:  "Copyright (C) 2011-2015 Nenad Rakocevic & Peter W A Wood. All rights reserved."
+	Rights:  "Copyright (C) 2011-2015 Red Foundation. All rights reserved."
 	License: "BSD-3 - https://github.com/red/red/blob/origin/BSD-3-License.txt"
 ]
 
@@ -23,7 +23,7 @@
 
 	--test-- "basic-8"	
 		--assert "make bitset! #{FF800000FFFF8000048900007FFFFFE0}"
-			 = mold charset [#"a" - #"z" 0 - 8 32 - #"0" "HELLO"]
+			 = mold charset [#"a" - #"z" 0 - 8 32 - 48 "HELLO"]
 
 	--test-- "basic-9"
 		bs: make bitset! [0 1 2 3]

@@ -3,7 +3,7 @@ Red/System [
 	Author:  "Nenad Rakocevic & Peter W A Wood"
 	File: 	 %cast-test.reds
 	Tabs:	 4
-	Rights:  "Copyright (C) 2011-2015 Nenad Rakocevic & Peter W A Wood. All rights reserved."
+	Rights:  "Copyright (C) 2011-2015 Red Foundation. All rights reserved."
 	License: "BSD-3 - https://github.com/red/red/blob/origin/BSD-3-License.txt"
 ]
 
@@ -361,6 +361,18 @@ Red/System [
 	--test-- "fl-cast-9"
 		c: as integer! foo37 789.0
 		--assert c = 789
+		
+	--test-- "fl-cast-10"
+		tm: 100.9
+		--assert 200 = (100 + as-integer tm)
+	
+	--test-- "fl-cast-11"
+		to-epoch: func [tm [float!] return: [integer!] /local base [integer!] f [float!]][
+			base: 100
+			f: tm + 0.5
+			base + as-integer f
+		]
+		--assert 201 = to-epoch 100.9
 
 ===end-group===
 

@@ -3,7 +3,7 @@ Red/System [
 	Author: "Nenad Rakocevic"
 	File: 	%font.reds
 	Tabs: 	4
-	Rights: "Copyright (C) 2015 Nenad Rakocevic. All rights reserved."
+	Rights: "Copyright (C) 2015-2018 Red Foundation. All rights reserved."
 	License: {
 		Distributed under the Boost Software License, Version 1.0.
 		See https://github.com/red/red/blob/master/BSL-License.txt
@@ -40,7 +40,7 @@ make-font: func [
 	height: either TYPE_OF(int) <> TYPE_INTEGER [0][
 		0 - (int/value * log-pixels-y / 72)
 	]
-	
+
 	int: as red-integer! values + FONT_OBJ_ANGLE
 	angle: either TYPE_OF(int) = TYPE_INTEGER [int/value * 10][0]	;-- in tenth of degrees
 	
@@ -67,8 +67,8 @@ make-font: func [
 		len: string/rs-length? str
 		if len > 31 [len: 31]
 		unicode/to-utf16-len str :len yes
-	][null]
-	
+	][default-font-name]
+
 	style: as red-word! values + FONT_OBJ_STYLE
 	len: switch TYPE_OF(style) [
 		TYPE_BLOCK [
@@ -114,16 +114,19 @@ make-font: func [
 		quality
 		0												;-- DEFAULT_PITCH
 		name
-	
-	either null? face [									;-- null => replace underlying GDI font object 
-		int: as red-integer! block/rs-head as red-block! values + FONT_OBJ_STATE
-		int/header: TYPE_INTEGER
-		int/value: as-integer hFont
-	][
-		blk: block/make-at as red-block! values + FONT_OBJ_STATE 2
-		integer/make-in blk as-integer hFont
-		none/make-in blk								;-- DWrite font
 
+	blk: as red-block! values + FONT_OBJ_STATE
+	either TYPE_OF(blk) <> TYPE_BLOCK [
+		block/make-at blk 2
+		handle/make-in blk as-integer hFont
+		none/make-in blk								;-- DWrite font
+	][
+		int: as red-integer! block/rs-head blk
+		int/header: TYPE_HANDLE
+		int/value: as-integer hFont
+	]
+
+	if face <> null [
 		blk: block/make-at as red-block! values + FONT_OBJ_PARENT 4
 		block/rs-append blk as red-value! face
 	]
@@ -135,10 +138,10 @@ set-font: func [
 	face   [red-object!]
 	values [red-value!]
 	/local
-		font  [red-object!]
-		state [red-block!]
-		int	  [red-integer!]
-		hFont [handle!]
+		font   [red-object!]
+		state  [red-block!]
+		handle [red-handle!]
+		hFont  [handle!]
 ][
 	font: as red-object! values + FACE_OBJ_FONT
 	if TYPE_OF(font) <> TYPE_OBJECT [
@@ -148,8 +151,8 @@ set-font: func [
 	state: as red-block! (object/get-values font) + FONT_OBJ_STATE
 	
 	hFont: as handle! either TYPE_OF(state) = TYPE_BLOCK [
-		int: as red-integer! block/rs-head state
-		int/value
+		handle: as red-handle! block/rs-head state
+		handle/value
 	][
 		make-font face font
 	]
@@ -162,16 +165,29 @@ get-font-handle: func [
 	return: [handle!]
 	/local
 		state  [red-block!]
-		int	   [red-integer!]
+		handle [red-handle!]
 ][
 	state: as red-block! (object/get-values font) + FONT_OBJ_STATE
 	if TYPE_OF(state) = TYPE_BLOCK [
-		int: (as red-integer! block/rs-head state) + idx
-		if TYPE_OF(int) = TYPE_INTEGER [
-			return as handle! int/value
+		handle: (as red-handle! block/rs-head state) + idx
+		if TYPE_OF(handle) = TYPE_HANDLE [
+			return as handle! handle/value
 		]
 	]
 	null
+]
+
+get-hfont: func [				;-- get or create a HFONT handle from font! object
+	face	[red-object!]
+	font	[red-object!]
+	return: [handle!]
+	/local
+		hFont [handle!]
+][
+	if TYPE_OF(font) <> TYPE_OBJECT [return null]
+	hFont: get-font-handle font 0
+	if null? hFont [hFont: make-font face font]
+	hFont
 ]
 
 free-font: func [
@@ -182,15 +198,15 @@ free-font: func [
 		this  [this!]
 		obj   [IUnknown]
 ][
+	unless winxp? [
+		this: as this! get-font-handle font 1
+		COM_SAFE_RELEASE(obj this)
+	]
 	hFont: get-font-handle font 0
 	if hFont <> null [
 		DeleteObject hFont
 		state: as red-block! (object/get-values font) + FONT_OBJ_STATE
 		state/header: TYPE_NONE
-	]
-	unless winxp? [
-		this: as this! get-font-handle font 1
-		COM_SAFE_RELEASE(obj this)
 	]
 ]
 
@@ -212,9 +228,10 @@ update-font: func [
 ]
 
 OS-request-font: func [
-	font	[red-object!]
-	mono?	[logic!]
-	return: [red-object!]
+	font	 [red-object!]
+	selected [red-object!]
+	mono?	 [logic!]
+	return:  [red-object!]
 	/local
 		values	[red-value!]
 		str		[red-string!]
@@ -222,6 +239,7 @@ OS-request-font: func [
 		cf		[tagCHOOSEFONT]
 		logfont [tagLOGFONT]
 		size	[integer!]
+		hfont	[handle!]
 		name	[c-string!]
 		bold?	[logic!]
 ][
@@ -232,9 +250,15 @@ OS-request-font: func [
 	zero-memory as byte-ptr! logfont 92
 
 	name: as c-string! (as byte-ptr! logfont) + 28
-	copy-memory as byte-ptr! name as byte-ptr! #u16 "Courier New" 22
-	logfont/lfHeight: -11 * log-pixels-y / 72
-	logfont/lfCharSet: #"^(01)"							;-- default
+
+	hfont: get-hfont null selected
+	either null? hfont [
+		copy-memory as byte-ptr! name as byte-ptr! #u16 "Courier New" 22
+		logfont/lfHeight: -11 * log-pixels-y / 72
+		logfont/lfCharSet: #"^(01)"						;-- default
+	][
+		GetObject hfont 92 as byte-ptr! logfont
+	]
 
 	cf/lStructSize: size
 	cf/hwndOwner: GetForegroundWindow
@@ -243,7 +267,7 @@ OS-request-font: func [
 	if mono? [cf/Flags: 4000h or cf/Flags]				;-- CF_FIXEDPITCHONLY
 
 	either ChooseFont cf [
-		size: platform/lstrlen as byte-ptr! name
+		size: lstrlen as byte-ptr! name
 		values: object/get-values font
 		str: as red-string! values + FONT_OBJ_NAME
 		str/header:	TYPE_STRING							;-- implicit reset of all header flags

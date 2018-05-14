@@ -3,7 +3,7 @@ Red/System [
 	Author:  "Nenad Rakocevic"
 	File: 	 %POSIX.reds
 	Tabs:	 4
-	Rights:  "Copyright (C) 2011-2015 Nenad Rakocevic. All rights reserved."
+	Rights:  "Copyright (C) 2011-2018 Red Foundation. All rights reserved."
 	License: {
 		Distributed under the Boost Software License, Version 1.0.
 		See https://github.com/red/red/blob/master/BSL-License.txt
@@ -127,15 +127,19 @@ posix-startup-ctx: context [
 	]
 ]
 
-#if OS <> 'MacOSX [								;-- OS X has it's own start code
+#if OS <> 'macOS [								;-- macOS has it's own start code
 	#switch type [
 		dll [
 			***-dll-entry-point: func [
 				[cdecl]
 			][
-				***-main
-				posix-startup-ctx/init
-				on-load
+				#either red-pass? = no [		;-- only for pure R/S DLLs
+					***-boot-rs
+					on-load
+					***-main
+				][
+					on-load
+				]
 			]
 		]
 		exe [

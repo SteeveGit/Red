@@ -3,11 +3,27 @@ Red/System [
 	Author: "Nenad Rakocevic"
 	File: 	%para.reds
 	Tabs: 	4
-	Rights: "Copyright (C) 2015 Nenad Rakocevic. All rights reserved."
+	Rights: "Copyright (C) 2015-2018 Red Foundation. All rights reserved."
 	License: {
 		Distributed under the Boost Software License, Version 1.0.
 		See https://github.com/red/red/blob/master/BSL-License.txt
 	}
+]
+
+update-area-para: func [
+	hWnd	[handle!]
+	face	[red-object!]
+	/local
+		parent [handle!]
+		h	   [red-handle!]
+][
+	parent: GetParent hWnd
+	DestroyWindow hWnd
+	hWnd: as handle! OS-make-view face as-integer parent
+
+	h: as red-handle! block/rs-head as red-block! (get-face-values hWnd) + FACE_OBJ_STATE
+	h/header: TYPE_HANDLE
+	h/value:  as-integer hWnd
 ]
 
 update-para: func [
@@ -50,9 +66,14 @@ update-para: func [
 		true [0]
 	]
 	hWnd: get-face-handle face
-	style: GetWindowLong hWnd GWL_STYLE
-	style: style and mask or get-para-flags sym para
-	SetWindowLong hWnd GWL_STYLE style
+	either sym = area [
+		update-area-para hWnd face
+		values: object/get-values face
+	][
+		style: GetWindowLong hWnd GWL_STYLE
+		style: style and mask or get-para-flags sym para
+		SetWindowLong hWnd GWL_STYLE style
+	]
 	
 	state: as red-block! values + FACE_OBJ_STATE
 	if TYPE_OF(state) = TYPE_BLOCK [
@@ -83,6 +104,8 @@ get-para-flags: func [
 		h-sym	[integer!]
 		v-sym	[integer!]
 ][
+	if TYPE_OF(para) <> TYPE_OBJECT [return 0]
+
 	values: object/get-values para
 	align:  as red-word! values + PARA_OBJ_ALIGN
 	h-sym:  symbol/resolve align/symbol

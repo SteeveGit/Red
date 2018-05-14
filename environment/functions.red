@@ -3,7 +3,7 @@ Red [
 	Author:  "Nenad Rakocevic"
 	File: 	 %functions.red
 	Tabs:	 4
-	Rights:  "Copyright (C) 2011-2015 Nenad Rakocevic. All rights reserved."
+	Rights:  "Copyright (C) 2011-2018 Red Foundation. All rights reserved."
 	License: {
 		Distributed under the Boost Software License, Version 1.0.
 		See https://github.com/red/red/blob/master/BSL-License.txt
@@ -34,12 +34,18 @@ attempt: func [
 	]
 ]
 
-comment: func [value][]
+comment: func ['value][]
 
 quit: func [
 	"Stops evaluation and exits the program"
 	/return status	[integer!] "Return an exit status"
 ][
+	#if all [
+		config/OS <> 'Windows
+		not config/gui-console?
+	][
+		if system/console [do [_terminate-console]]
+	]
 	quit-return any [status 0]
 ]
 
@@ -53,7 +59,7 @@ empty?: func [
 
 ??: func [
 	"Prints a word and the value it refers to (molded)"
-	'value [word!]
+	'value [word! path!]
 ][
 	prin mold :value
 	prin ": "
@@ -82,100 +88,76 @@ fifth:	func ["Returns the fifth value in a series"  s [series! tuple!]] [pick s 
 
 last:	func ["Returns the last value in a series"  s [series!]][pick back tail s 1]
 
+#do keep [
+	list: make block! 50
+	to-list: [
+		bitset! binary! block! char! email! file! float! get-path! get-word! hash!
+		integer! issue! lit-path! lit-word! logic! map! none! pair! paren! path!
+		percent! refinement! set-path! set-word! string! tag! time! typeset! tuple!
+		unset! url! word! image! date!
+	]
+	test-list: union to-list [
+		handle! error! action! native! datatype! function! image! object! op! routine! vector!
+	]
+	
+	;-- Generates all accessor functions (spec-of, body-of, words-of,...)
+	
+	foreach [name desc][
+		spec   "Returns the spec of a value that supports reflection"
+		body   "Returns the body of a value that supports reflection"
+		words  "Returns the list of words of a value that supports reflection"
+		class  "Returns the class ID of an object"
+		values "Returns the list of values of a value that supports reflection"
+	][
+		repend list [
+			load join form name "-of:" 'func reduce [desc 'value] new-line/all compose [
+				reflect :value (to lit-word! name)
+			] off
+		]
+	]
+	
+	;-- Generates all type testing functions (action?, bitset?, binary?,...)
+	
+	foreach name test-list [
+		repend list [
+			load head change back tail form name "?:" 'func
+			["Returns true if the value is this type" value [any-type!]]
+			compose [(name) = type? :value]
+		]
+	]
+	
+	;-- Generates all typesets testing functions (any-list?, any-block?,...)
+	
+	docstring: "Returns true if the value is any type of "
+	foreach name [
+		any-list! any-block! any-function! any-object! any-path! any-string! any-word!
+		series! number! immediate! scalar! all-word!
+	][
+		repend list [
+			load head change back tail form name "?:" 'func
+			compose [(join docstring head clear back tail form name) value [any-type!]]
+			compose [find (name) type? :value]
+		]
+	]
+	
+	;-- Generates all conversion wrapper functions (to-bitset, to-binary, to-block,...)
 
-action?:	 func ["Returns true if the value is this type" value [any-type!]] [action!		= type? :value]
-bitset?:	 func ["Returns true if the value is this type" value [any-type!]] [bitset!		= type? :value]
-binary?:	 func ["Returns true if the value is this type" value [any-type!]] [binary!		= type? :value]
-block?:		 func ["Returns true if the value is this type" value [any-type!]] [block!		= type? :value]
-char?: 		 func ["Returns true if the value is this type" value [any-type!]] [char!		= type? :value]
-datatype?:	 func ["Returns true if the value is this type" value [any-type!]] [datatype!	= type? :value]
-email?:		 func ["Returns true if the value is this type" value [any-type!]] [email!		= type? :value]
-error?:		 func ["Returns true if the value is this type" value [any-type!]] [error!		= type? :value]
-file?:		 func ["Returns true if the value is this type" value [any-type!]] [file!		= type? :value]
-float?:		 func ["Returns true if the value is this type" value [any-type!]] [float!		= type? :value]
-function?:	 func ["Returns true if the value is this type" value [any-type!]] [function!	= type? :value]
-get-path?:	 func ["Returns true if the value is this type" value [any-type!]] [get-path!	= type? :value]
-get-word?:	 func ["Returns true if the value is this type" value [any-type!]] [get-word!	= type? :value]
-hash?:		 func ["Returns true if the value is this type" value [any-type!]] [hash!		= type? :value]
-image?:		 func ["Returns true if the value is this type" value [any-type!]] [image!		= type? :value]
-integer?:    func ["Returns true if the value is this type" value [any-type!]] [integer!	= type? :value]
-issue?:    	 func ["Returns true if the value is this type" value [any-type!]] [issue!		= type? :value]
-lit-path?:	 func ["Returns true if the value is this type" value [any-type!]] [lit-path!	= type? :value]
-lit-word?:	 func ["Returns true if the value is this type" value [any-type!]] [lit-word!	= type? :value]
-logic?:		 func ["Returns true if the value is this type" value [any-type!]] [logic!		= type? :value]
-map?:		 func ["Returns true if the value is this type" value [any-type!]] [map!		= type? :value]
-native?:	 func ["Returns true if the value is this type" value [any-type!]] [native!		= type? :value]
-none?:		 func ["Returns true if the value is this type" value [any-type!]] [none!		= type? :value]
-object?:	 func ["Returns true if the value is this type" value [any-type!]] [object!		= type? :value]
-op?:		 func ["Returns true if the value is this type" value [any-type!]] [op!			= type? :value]
-pair?:		 func ["Returns true if the value is this type" value [any-type!]] [pair!		= type? :value]
-paren?:		 func ["Returns true if the value is this type" value [any-type!]] [paren!		= type? :value]
-path?:		 func ["Returns true if the value is this type" value [any-type!]] [path!		= type? :value]
-percent?:	 func ["Returns true if the value is this type" value [any-type!]] [percent!	= type? :value]
-refinement?: func ["Returns true if the value is this type" value [any-type!]] [refinement! = type? :value]
-routine?:	 func ["Returns true if the value is this type" value [any-type!]] [routine!	= type? :value]
-set-path?:	 func ["Returns true if the value is this type" value [any-type!]] [set-path!	= type? :value]
-set-word?:	 func ["Returns true if the value is this type" value [any-type!]] [set-word!	= type? :value]
-string?:	 func ["Returns true if the value is this type" value [any-type!]] [string!		= type? :value]
-tag?:		 func ["Returns true if the value is this type" value [any-type!]] [tag!		= type? :value]
-time?:		 func ["Returns true if the value is this type" value [any-type!]] [time!		= type? :value]
-typeset?:	 func ["Returns true if the value is this type" value [any-type!]] [typeset!	= type? :value]
-tuple?:		 func ["Returns true if the value is this type" value [any-type!]] [tuple!		= type? :value]
-unset?:		 func ["Returns true if the value is this type" value [any-type!]] [unset!		= type? :value]
-url?:		 func ["Returns true if the value is this type" value [any-type!]] [url!		= type? :value]
-vector?:	 func ["Returns true if the value is this type" value [any-type!]] [vector!		= type? :value]
-word?:		 func ["Returns true if the value is this type" value [any-type!]] [word!		= type? :value]
-
-any-list?:		func ["Returns true if the value is any type of list"	  value [any-type!]][find any-list! 	type? :value]
-any-block?:		func ["Returns true if the value is any type of block"	  value [any-type!]][find any-block! 	type? :value]
-any-function?:	func ["Returns true if the value is any type of function" value [any-type!]][find any-function! type? :value]
-any-object?:	func ["Returns true if the value is any type of object"	  value [any-type!]][find any-object!	type? :value]
-any-path?:		func ["Returns true if the value is any type of path"	  value [any-type!]][find any-path!		type? :value]
-any-string?:	func ["Returns true if the value is any type of string"	  value [any-type!]][find any-string!	type? :value]
-any-word?:		func ["Returns true if the value is any type of word"	  value [any-type!]][find any-word!		type? :value]
-series?:		func ["Returns true if the value is any type of series"	  value [any-type!]][find series!		type? :value]
-number?:		func ["Returns true if the value is any type of number"	  value [any-type!]][find number!		type? :value]
-immediate?:		func ["Returns true if the value is any immediate value"  value [any-type!]][find immediate!	type? :value]
-scalar?:		func ["Returns true if the value is any type of scalar"	  value [any-type!]][find scalar!		type? :value]
-
-spec-of: func [
-	"Returns the spec of a value that supports reflection"
-	value
-][
-	reflect :value 'spec
+	foreach name to-list [
+		repend list [
+			to set-word! join "to-" head remove back tail form name 'func
+			reduce [reform ["Convert to" name "value"] 'value]
+			compose [to (name) :value]
+		]
+	]
+	list
 ]
 
-body-of: func [
-	"Returns the body of a value that supports reflection"
-	value
+context: func [
+	"Makes a new object from an evaluated spec"
+	spec [block!]
 ][
-	reflect :value 'body
+	make object! spec
 ]
-
-words-of: func [
-	"Returns the list of words of a value that supports reflection"
-	value
-][
-	reflect :value 'words
-]
-
-class-of: func [
-	"Returns the class ID of an object"
-	value
-][
-	reflect :value 'class
-]
-
-values-of: func [
-	"Returns the list of values of a value that supports reflection"
-	value
-][
-	reflect :value 'values
-]
-
-keys-of: :words-of
-
-context: func [spec [block!]][make object! spec]
 
 alter: func [
 	"If a value is not found in a series, append it; otherwise, remove it. Returns true if added"
@@ -199,7 +181,7 @@ repend: func [
 	value
 	/only "Appends a block value as a block"
 ][
-	head either only [
+	head either any [only not any-list? series][
 		insert/only tail series reduce :value
 	][
 		reduce/into :value tail series					;-- avoids wasting an intermediary block
@@ -207,11 +189,29 @@ repend: func [
 ]
 
 replace: function [
-	series [series!]
-	pattern
-	value
-	/all
+	"Replaces values in a series, in place"
+	series [series!] "The series to be modified"
+	pattern "Specific value or parse rule pattern to match"
+	value "New value, replaces pattern in the series"
+	/all  "Replace all occurrences, not just the first"
+	/deep "Replace pattern in all sub-lists as well"
 ][
+	if system/words/all [deep any-list? series][
+		pattern: to block! either word? p: pattern [to lit-word! pattern][pattern]
+		parse series rule: [
+			some [
+				s: pattern e: (
+					s: change/part s value e
+					unless all [return series]
+				) :s
+				| ahead any-list! into rule | skip
+			]
+		]
+		return series
+	]
+	if system/words/all [char? :pattern any-string? series][
+		pattern: form pattern
+	]
 	many?: any [
 		system/words/all [series? :pattern any-string? series]
 		binary? series
@@ -227,7 +227,9 @@ replace: function [
 				pos: insert pos value
 			]
 		][
-			while [pos: find pos :pattern][pos/1: value]
+			while [pos: find pos :pattern][
+				pos: insert remove pos value
+			]
 		]
 	][
 		if pos: find series :pattern [
@@ -238,16 +240,6 @@ replace: function [
 	series
 ]
 
-zero?: func [
-	value [number! pair!]
-][
-	either pair! = type? value [
-		make logic! all [value/1 = 0 value/2 = 0]
-	][
-		value = 0
-	]
-]
-
 math: function [
 	"Evaluates a block using math precedence rules, returning the last result"
 	body [block!] "Block to evaluate"
@@ -255,9 +247,10 @@ math: function [
 ][
 	parse body: copy/deep body rule: [
 		any [
-			pos: ['* (op: 'multiply) | quote / (op: 'divide)] (
+			pos: ['* (op: 'multiply) | quote / (op: 'divide)] 
+			[ahead sub: paren! (sub/1: math as block! sub/1) | skip] (
 				end: skip pos: back pos 3
-				pos: change/only/part pos to-paren copy/part pos end end
+				pos: change/only/part pos as paren! copy/part pos end end
 			) :pos
 			| into rule
 			| skip
@@ -272,7 +265,7 @@ charset: func [
 	make bitset! spec
 ]
 
-p-indent: make string! 30								;@@ to be put in an local context
+p-indent: make string! 30								;@@ to be put in a local context
 
 on-parse-event: func [
 	event	[word!]   "Trace events: push, pop, fetch, match, iterate, paren, end"
@@ -293,11 +286,11 @@ on-parse-event: func [
 		]
 		fetch [
 			print [
-				p-indent "match:" mold/part rule  50 newline
-				p-indent "input:" mold/part input 50 p-indent
+				p-indent "match:" mold/flat/part rule 50 newline
+				p-indent "input:" mold/flat/part input 50 p-indent
 			]
 		]
-		match [print [p-indent "==>" either match? ["matched"]["not matched"]]]
+		match [print [p-indent "==>" pick ["matched" "not matched"]  match?]]
 		end   [print ["return:" match?]]
 	]
 	true
@@ -312,6 +305,7 @@ parse-trace: func [
 		limit [integer!]
 	return: [logic! block!]
 ][
+	clear p-indent
 	either case [
 		parse/case/trace input rules :on-parse-event
 	][
@@ -336,8 +330,9 @@ suffix?: function [
 load: function [
 	"Returns a value or block of values by reading and evaluating a source"
 	source [file! url! string! binary!]
-	/header "TBD: Include Red header as a loaded value"
-	/all    "TBD: Don't evaluate Red header"
+	/header "TBD"
+	/all    "Load all values, returns a block. TBD: Don't evaluate Red header"
+	/trap	"Load all values, returns [[values] position error]"
 	/next	"Load the next value only, updates source series word"
 		position [word!] "Word updated with new series position"
 	/part
@@ -345,7 +340,7 @@ load: function [
 	/into "Put results in out block, instead of creating a new block"
 		out [block!] "Target block for results"
 	/as   "Specify the type of data; use NONE to load as code"
-		type [word! none!] "E.g. json, html, jpeg, png, etc"
+		type [word! none!] "E.g. bmp, gif, jpeg, png"
 ][
 	if as [
 		if word? type [
@@ -353,7 +348,7 @@ load: function [
 				if url? source [source: read/binary source]
 				return do [codec/decode source]
 			][
-				return none
+				cause-error 'script 'invalid-refine-arg [/as type]
 			]
 		]
 	]
@@ -368,7 +363,7 @@ load: function [
 			]
 		]
 	]
-	unless out [out: make block! 100]
+	unless out [out: make block! 10]
 	
 	switch/default type?/word source [
 		file!	[
@@ -396,13 +391,15 @@ load: function [
 		binary! [source: to string! source]				;-- For text: UTF-8 encoding TBD: load image in binary form
 	][source]
 
-	case [
-		part  [system/lexer/transcode/part source out length]
-		next  [set position system/lexer/transcode/one source out]
-		'else [system/lexer/transcode source out]
+	result: case [
+		part  [system/lexer/transcode/part source out trap length]
+		next  [set position system/lexer/transcode/one source out trap]
+		'else [system/lexer/transcode source out trap]
 	]
-	unless :all [if 1 = length? out [out: out/1]]
-	out 
+	either trap [result][
+		unless :all [if 1 = length? out [out: out/1]]
+		out
+	]
 ]
 
 save: function [
@@ -414,14 +411,14 @@ save: function [
 	/all    "TBD: Save in serialized format"
 	/length "Save the length of the script content in the header"
 	/as     "Specify the format of data; use NONE to save as plain text"
-		format [word! none!] "E.g. json, html, jpeg, png, redbin etc"
+		format [word! none!] "E.g. bmp, gif, jpeg, png"
 ][
-	either as [
-		if word? format [
-			either codec: select system/codecs format [
-				data: do [codec/encode value]
-			][exit]
-		]
+	dst: either any [file? where url? where][where][none]
+	either system/words/all [as  word? format] [				;-- Be aware of [all as] word shadowing
+		either codec: select system/codecs format [
+			data: do [codec/encode value dst]
+			if same? data dst [exit]	;-- if encode returns dst back, means it already save value to dst
+		][cause-error 'script 'invalid-refine-arg [/as format]] ;-- throw error if format is not supported
 	][
 		if length [header: true header-data: any [header-data copy []]]
 		if header [
@@ -431,7 +428,8 @@ save: function [
 		find-encoder?: no
 		foreach [name codec] system/codecs [
 			if (find codec/suffixes suffix) [		;@@ temporary required until dyn-stack implemented
-				data: do [codec/encode value]
+				data: do [codec/encode value dst]
+				if same? data dst [exit]
 				find-encoder?: yes
 			]
 		]
@@ -486,30 +484,41 @@ cause-error: function [
 ]
 
 pad: func [
-	"Pad a string on right side with spaces"
-	str		[string!]		"String to pad"
+	"Pad a FORMed value on right side with spaces"
+	str						"Value to pad, FORM it if not a string"
 	n		[integer!]		"Total size (in characters) of the new string"
 	/left					"Pad the string on left side"
 	/with c	[char!]			"Pad with char"
 	return:	[string!]		"Modified input string at head"
 ][
+	unless string? str [str: form str]
 	head insert/dup
 		any [all [left str] tail str]
 		any [c #" "]
 		(n - length? str)
 ]
 
-modulo: func [
+mod: func [
 	"Compute a nonnegative remainder of A divided by B"
+	a		[number! char! pair! tuple! vector! time!]
+	b		[number! char! pair! tuple! vector! time!]	"Must be nonzero"
+	return: [number! char! pair! tuple! vector! time!]
+	/local r
+][
+	if (r: a % b) < 0 [r: r + b]
+	a: absolute a
+	either all [a + r = (a + b) r + r - b > 0][r - b][r]
+]
+
+modulo: func [
+	"Wrapper for MOD that handles errors like REMAINDER. Negligible values (compared to A and B) are rounded to zero"
 	a		[number! char! pair! tuple! vector! time!]
 	b		[number! char! pair! tuple! vector! time!]
 	return: [number! char! pair! tuple! vector! time!]
 	/local r
 ][
-	b: absolute b
-	if (r: a % b) < 0 [r: r + b]
-	a: absolute a
-	either all [a + r = (a + b) 0 < r + r - b][r - b][r]
+	r: mod a absolute b
+	either any [a - r = a r + b = b][0][r]
 ]
 
 eval-set-path: func [value1][]
@@ -524,7 +533,7 @@ to-red-file: func [
 	dst: make file! len
 	if zero? len [return dst]
 	i: 1
-	either system/platform = 'Windows [
+	#either config/OS = 'Windows [
 		until [
 			c: pick path i
 			i: i + 1
@@ -566,9 +575,11 @@ normalize-dir: function [
 	dir
 ]
 
-what-dir: func [/local path][
+what-dir: func [
 	"Returns the active directory path"
-	path: to-red-file get-current-dir
+	/local path
+][
+	path: copy system/options/path
 	unless dir? path [append path #"/"]
 	path
 ]
@@ -579,39 +590,6 @@ change-dir: function [
 ][
 	unless exists? dir: normalize-dir dir [cause-error 'access 'cannot-open [dir]]
 	system/options/path: dir
-]
-
-list-dir: function [
-	"Displays a list of files and directories from given folder or current one"
-	dir [any-type!]  "Folder to list"
-	/col			 "Forces the display in a given number of columns"
-		n [integer!] "Number of columns"
-][
-	unless value? 'dir [dir: %.]
-	
-	unless find [file! word! path!] type?/word :dir [
-		cause-error 'script 'expect-arg ['list-dir type? :dir 'dir]
-	]
-	list: read normalize-dir dir
-	max-sz: either n [
-		system/console/limit / n - n					;-- account for n extra spaces
-	][
-		n: max 1 system/console/limit / 22				;-- account for n extra spaces
-		22 - n
-	]
-
-	while [not tail? list][
-		loop n [
-			if max-sz <= length? name: list/1 [
-				name: append copy/part name max-sz - 4 "..."
-			]
-			prin tab
-			prin pad form name max-sz
-			prin " "
-			if tail? list: next list [exit]
-		]
-		prin lf
-	]
 ]
 
 make-dir: function [
@@ -655,69 +633,6 @@ make-dir: function [
 	path
 ]
 
-to-image: func [value][
-	case [
-		binary? value [
-			;@@ TBD
-		]
-		all [											;-- face!
-			system/view
-			object? value
-			do [find words-of value words-of face!]
-		][
-			system/view/platform/to-image value
-		]
-	]
-]
-
-hex-to-rgb: function [
-	"Converts a color in hex format to a tuple value; returns NONE if it fails"
-	hex		[issue!] "Accepts #rgb, #rrggbb, #rrggbbaa"	 ;-- 3,6,8 nibbles supported
-	return: [tuple! none!]								 ;-- 3 or 4 bytes long
-][
-	switch length? str: form hex [
-		3 [
-			uppercase str
-			forall str [str/1: str/1 - pick "70" str/1 >= #"A"]
-
-			as-color 
-				shift/left to integer! str/1 4
-				shift/left to integer! str/2 4
-				shift/left to integer! str/3 4
-		]
-		6 [if bin: to binary! hex [as-color bin/1 bin/2 bin/3]]
-		8 [if bin: to binary! hex [as-rgba bin/1 bin/2 bin/3 bin/4]]
-	]
-]
-
-within?: func [
-	"Return TRUE if the point is within the rectangle bounds"
-	point	[pair!] "XY position"
-	offset  [pair!] "Offset of area"
-	size	[pair!] "Size of area"
-	return: [logic!]
-][
-	make logic! all [
-		point/x >= offset/x
-		point/y >= offset/y
-		point/x < (offset/x + size/x)
-		point/y < (offset/y + size/y)
-	]
-]
-
-overlap?: function [
-	"Return TRUE if the two faces bounding boxes are overlapping"
-	A		[object!] "First face"
-	B		[object!] "Second face"
-	return: [logic!]  "TRUE if overlapping"
-][
-	A1: A/offset
-	B1: B/offset
-	A2: A1 + A/size
-	B2: B1 + B/size
-	make logic! all [A1/x < B2/x B1/x < A2/x A1/y < B2/y B1/y < A2/y]
-]
-
 extract: function [
 	"Extracts a value from a series at regular intervals"
 	series	[series!]
@@ -727,6 +642,7 @@ extract: function [
 	/into				 "Provide an output series instead of creating a new one"
 		output [series!] "Output series"
 ][
+	width: max 1 width
 	if pos [series: at series pos]
 	unless into [output: make series (length? series) / width]
 	
@@ -740,18 +656,43 @@ extract: function [
 extract-boot-args: function [
 	"Process command-line arguments and store values in system/options (internal usage)"
 ][
-	args: system/options/args
-	pos: find next args get pick [dbl-quote space] args/1 = dbl-quote
-	
-	either pos [
-		system/options/boot: copy/part next args pos
-		if pos/1 = dbl-quote [pos: next pos]
-		if pos/2 = space [pos: skip pos 2]
-		remove/part args pos
-		if empty? trim/head args [system/options/args: none]
+	unless args: system/script/args [exit]				;-- non-executable case
+
+	;-- extract system/options/boot
+	either args/1 = dbl-quote [
+		until [args: next args args/1 <> dbl-quote]
+		system/options/boot: to-red-file copy/part args pos: find args dbl-quote
+		until [pos: next pos pos/1 <> dbl-quote]
 	][
-		system/options/boot: args
-		system/options/args: none
+		pos: either pos: find/tail args space [back pos][tail args]
+		system/options/boot: to-red-file copy/part args pos
+	]
+	;-- clean-up system/script/args
+	remove/part args: head args pos
+	
+	;-- set system/options/args
+	either empty? trim/head args [system/script/args: none][
+		unescape: quote (
+			if odd? len: offset? s e [len: len - 1]
+			e: skip e negate len / 2
+			e: remove/part s e
+		)
+		parse args: copy args [							;-- preprocess escape chars
+			any [
+				s: {'"} thru {"'} e: (s/1: #"{" e/-1: #"}")
+				| s: #"'" [to #"'" e: (s/1: #"{" e/1: #"}") | to end]
+				| s: some #"\" e: {"} unescape :e
+				  thru [s: some #"\" e: {"}] unescape :e
+				| skip
+			]
+		]
+		system/options/args: parse head args [			;-- tokenize and collect
+			collect some [[
+				some #"^"" keep copy s to #"^"" some #"^""
+				| #"{" keep copy s to #"}" skip
+				| keep copy s [to #" " | to end]] any #" "
+			]
+		]
 	]
 ]
 
@@ -765,7 +706,7 @@ collect: function [
 	
 	unless collected [collected: make block! 16]
 	parse body rule: [									;-- selective binding (needs BIND/ONLY support)
-		any [pos: ['keep | 'collected] (pos/1: bind pos/1 'keep) | any-string! | into rule | skip]
+		any [pos: ['keep | 'collected] (pos/1: bind pos/1 'keep) | any-string! | binary! | into rule | skip]
 	]
 	do body
 	either into [collected][head collected]
@@ -787,7 +728,7 @@ split: function [
 	series [any-string!] dlm [string! char! bitset!] /local s
 ][
 	num: either string? dlm [length? dlm][1]
-	parse series [collect any [copy s [to dlm | to end] keep (s) num skip]]
+	parse series [collect any [copy s [to [dlm | end]] keep (s) num skip [end keep ("") | none] ]]
 ]
 
 dirize: func [
@@ -802,10 +743,14 @@ clean-path: func [
 	file [file! url! string!]
 	/only "Do not prepend current directory"
 	/dir "Add a trailing / if missing"
-	/local out cnt f
+	/local out cnt f not-file?
 ][
-	case [
-		any [only not file? file] [file: copy file]
+	not-file?: not file? file
+	
+	file: case [
+		any [only not-file?][
+			copy file
+		]
 		#"/" = first file [
 			file: next file
 			out: next what-dir
@@ -814,32 +759,32 @@ clean-path: func [
 					#"/" = first file
 					do [f: find/tail out #"/"]
 				]
-			] [
+			][
 				file: next file
 				out: f
 			]
-			file: append clear out file
+			 append clear out file
 		]
-		true [file: append what-dir file]
+		'else [append what-dir file]
 	]
-	if all [dir not dir? file] [append file #"/"]
+	if all [dir not dir? file][append file #"/"]
+	
 	out: make file! length? file
 	cnt: 0
+	
 	parse reverse file [
 		some [
 			"../" (cnt: cnt + 1)
 			| "./"
-			| #"/" (if any [not file? file #"/" <> last out] [append out #"/"])
-			| copy f [to #"/" | to end skip] (
-				either cnt > 0 [
-					cnt: cnt - 1
-				] [
-					unless find ["" "." ".."] to string! f [append out f]
+			| #"/" (if any [not-file? not dir? out][append out #"/"])
+			| copy f thru #"/" (
+				either cnt > 0 [cnt: cnt - 1][
+					unless find ["" "." ".."] as string! f [append out f]
 				]
 			)
 		]
 	]
-	if all [#"/" = last out #"/" <> last file] [remove back tail out]
+	if all [dir? out #"/" <> last file][take/last out]
 	reverse out
 ]
 
@@ -858,14 +803,187 @@ split-path: func [
 	reduce [dir pos]
 ]
 
-do-file: func [file [file!] /local saved code new-path][
+do-file: func [file [file! url!] /local saved code new-path src][
 	saved: system/options/path
-	code: load file
-	new-path: first split-path clean-path file
-	change-dir new-path
-	set/any 'code do code
-	change-dir saved
+	unless src: find/case read file "Red" [
+		cause-error 'syntax 'no-header reduce [file]
+	]
+	code: expand-directives load/all src
+	if code/1 = 'Red/System [cause-error 'internal 'red-system []]
+	if file? file [
+		new-path: first split-path clean-path file
+		change-dir new-path
+	]
+	set/any 'code try/all code
+	if file? file [change-dir saved]
+	if error? :code [do :code]							;-- rethrow the error
 	:code
+]
+
+;clear-cache: function [/only url][
+;
+;]
+
+path-thru: function [
+	"Returns the local disk cache path of a remote file"
+	url [url!]		"Remote file address"
+	return: [file!]
+][
+	so: system/options
+	unless so/thru-cache [make-dir/deep so/thru-cache: append copy so/cache %cache/]
+	
+	if pos: find/tail file: to-file url "//" [file: pos]
+	clear find pos charset "?#"
+	path: first split-path file: append copy so/thru-cache file
+	unless exists? path [make-dir/deep path]
+	file
+]
+
+exists-thru?: function [
+	"Returns true if the remote file is present in the local disk cache"
+	url [url! file!] "Remote file address"
+][
+	exists? any [all [file? url url] path-thru url]
+]
+
+read-thru: function [
+	"Reads a remote file through local disk cache"
+	url [url!]	"Remote file address"
+	/update		"Force a cache update"
+	/binary		"Use binary mode"
+][
+	path: path-thru url
+	either all [not update exists? path] [
+		data: either binary [read/binary path][read path]
+	][
+		data: either binary [read/binary url][read url]
+		attempt [write/binary path data]
+	]
+	data
+]
+
+load-thru: function [
+	"Loads a remote file through local disk cache"
+	url [url!]	"Remote file address"
+	/update		"Force a cache update"
+	/as			"Specify the type of data; use NONE to load as code"
+		type [word! none!] "E.g. bmp, gif, jpeg, png"
+][
+	path: path-thru url
+	if all [not update exists? path][url: path]
+	file: either as [load/as url type][load url]
+	if url? url [attempt [either as [save/as path file type][save path file]]]
+	file
+]
+
+do-thru: function [
+	"Evaluates a remote Red script through local disk cache"
+	url [url!]	"Remote file address"
+	/update		"Force a cache update"
+][
+	do either update [load-thru/update url][load-thru url]
+]
+
+cos: func [
+	"Returns the trigonometric cosine"
+	angle [float!] "Angle in radians"
+][
+	#system [
+		stack/arguments: stack/arguments - 1
+		natives/cosine* no 1
+	]
+]
+
+sin: func [
+	"Returns the trigonometric sine"
+	angle [float!] "Angle in radians"
+][
+	#system [
+		stack/arguments: stack/arguments - 1
+		natives/sine* no 1
+	]
+]
+
+tan: func [
+	"Returns the trigonometric tangent"
+	angle [float!] "Angle in radians"
+][
+	#system [
+		stack/arguments: stack/arguments - 1
+		natives/tangent* no 1
+	]
+]
+
+acos: func [
+	"Returns the trigonometric arccosine"
+	angle [float!] "Angle in radians"
+][
+	#system [
+		stack/arguments: stack/arguments - 1
+		natives/arccosine* no 1
+	]
+]
+
+asin: func [
+	"Returns the trigonometric arcsine"
+	angle [float!] "Angle in radians"
+][
+	#system [
+		stack/arguments: stack/arguments - 1
+		natives/arcsine* no 1
+	]
+]
+
+atan: func [
+	"Returns the trigonometric arctangent"
+	angle [float!] "Angle in radians"
+][
+	#system [
+		stack/arguments: stack/arguments - 1
+		natives/arctangent* no 1
+	]
+]
+
+atan2: func [
+	"Returns the angle of the point y/x in radians"
+	y		[number!]
+	x		[number!]
+	return:	[float!]
+][
+	#system [
+		stack/arguments: stack/arguments - 2
+		natives/arctangent2* no 1
+	]
+]
+
+
+sqrt: func [
+	"Returns the square root of a number"
+	number	[number!]
+	return:	[float!]
+][
+	#system [
+		stack/arguments: stack/arguments - 1
+		natives/square-root* no
+	]
+]
+
+to-UTC-date: func [
+	"Returns the date with UTC zone"
+	date [date!]
+	return: [date!]
+][
+	date/timezone: 0
+	date
+]
+
+to-local-date: func [
+	"Returns the date with local zone"
+	date [date!]
+	return: [date!]
+][
+	date/timezone: now/zone
+	date
 ]
 
 ;--- Temporary definition, use at your own risks! ---
@@ -883,6 +1001,6 @@ rejoin: function [
 ;-				Aliases					  -
 ;------------------------------------------
 
-atan2:		:arctangent2
+keys-of:	:words-of
 object:		:context
 halt:		:quit										;-- default behavior unless console is loaded

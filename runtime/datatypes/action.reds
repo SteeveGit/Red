@@ -3,7 +3,7 @@ Red/System [
 	Author:  "Nenad Rakocevic"
 	File: 	 %action.reds
 	Tabs:	 4
-	Rights:  "Copyright (C) 2011-2015 Nenad Rakocevic. All rights reserved."
+	Rights:  "Copyright (C) 2011-2018 Red Foundation. All rights reserved."
 	License: {
 		Distributed under the Boost Software License, Version 1.0.
 		See https://github.com/red/red/blob/master/BSL-License.txt
@@ -27,9 +27,10 @@ action: context [
 	;-- Actions -- 
 	
 	make: func [
-		proto	   [red-value!]
-		spec   	   [red-block!]
-		return:    [red-action!]						;-- return action cell pointer
+		proto	[red-value!]
+		spec	[red-block!]
+		type	[integer!]
+		return:	[red-action!]							;-- return action cell pointer
 		/local
 			list   [red-block!]
 			action [red-action!]
@@ -115,6 +116,7 @@ action: context [
 		switch op [
 			COMP_EQUAL
 			COMP_SAME
+			COMP_FIND
 			COMP_STRICT_EQUAL
 			COMP_NOT_EQUAL
 			COMP_SORT

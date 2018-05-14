@@ -3,7 +3,7 @@ Red/System [
 	Author:  "Nenad Rakocevic"
 	File: 	 %native.reds
 	Tabs:	 4
-	Rights:  "Copyright (C) 2011-2015 Nenad Rakocevic. All rights reserved."
+	Rights:  "Copyright (C) 2011-2018 Red Foundation. All rights reserved."
 	License: {
 		Distributed under the Boost Software License, Version 1.0.
 		See https://github.com/red/red/blob/master/BSL-License.txt
@@ -137,9 +137,10 @@ native: context [
 	;-- Actions -- 
 	
 	make: func [
-		proto	   [red-value!]
-		spec	   [red-block!]
-		return:    [red-native!]						;-- return native cell pointer
+		proto	[red-value!]
+		spec	[red-block!]
+		type	[integer!]
+		return:	[red-native!]						;-- return native cell pointer
 		/local
 			list   [red-block!]
 			native [red-native!]
@@ -247,6 +248,7 @@ native: context [
 		if type <> TYPE_NATIVE [RETURN_COMPARE_OTHER]
 		switch op [
 			COMP_EQUAL
+			COMP_FIND
 			COMP_SAME
 			COMP_STRICT_EQUAL
 			COMP_NOT_EQUAL

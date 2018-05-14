@@ -1,9 +1,9 @@
-fRed [
+Red [
 	Title:	"Red PARSE test script"
 	Author:	"Nenad Rakocevic"
 	File:	%parse-test.reds
 	Tabs:	4
-	Rights:	"Copyright (C) 2011-2015 Nenad Rakocevic & Peter W A Wood. All rights reserved."
+	Rights:	"Copyright (C) 2011-2015 Red Foundation. All rights reserved."
 	License: "BSD-3 - https://github.com/red/red/blob/origin/BSD-3-License.txt"
 ]
 
@@ -1868,7 +1868,7 @@ fRed [
 		
 	--test-- "#748"
 		txt: "Hello world"
-		parse txt [ while any [ remove "l" | skip ] ]
+		parse txt [ while [any [ remove "l" | skip ] fail] ]
 		--assert txt = "Heo word"
 		--assert 8 = length? txt
 
@@ -2702,6 +2702,33 @@ fRed [
 		--assert parse/part input2 [copy v 3 #{0A}] skip input2 3
 		--assert v = #{0a0a0a}
 
+===end-group===
+
+===start-group=== "Issues"
+
+	--test-- "#2515"
+		--assert parse "this one is" ["this" to "is" "is"]
+
+	--test-- "#2561"
+		--assert [] = parse "" [collect [keep to end]]
+		--assert [] = parse "" [collect [keep pick to end]]
+
+	--test-- "#2818"
+		--assert parse "abc" [to [s: "bc"] 2 skip]
+		--assert parse "abc" [to [s: () "bc"] 2 skip]
+		--assert parse "abc" [to [s: (123) "bc"] 2 skip]
+		
+	--test-- "#3108"
+		--assert parse [1][some [to end]]
+		--assert parse [1][some [to [end]]]
+
+		partition3108: function [elems [block!] group [integer!]][
+			parse elems [
+				collect some [keep group skip | collect keep to end]
+			]
+		]
+		--assert [[1 2] [3 4] [5 6] [7 8] [9]] = partition3108 [1 2 3 4 5 6 7 8 9] 2
+		
 ===end-group===
     
 ~~~end-file~~~

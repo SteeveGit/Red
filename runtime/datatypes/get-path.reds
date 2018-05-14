@@ -3,7 +3,7 @@ Red/System [
 	Author:  "Nenad Rakocevic"
 	File: 	 %get-path.reds
 	Tabs:	 4
-	Rights:  "Copyright (C) 2011-2015 Nenad Rakocevic. All rights reserved."
+	Rights:  "Copyright (C) 2011-2018 Red Foundation. All rights reserved."
 	License: {
 		Distributed under the Boost Software License, Version 1.0.
 		See https://github.com/red/red/blob/master/BSL-License.txt
@@ -40,21 +40,7 @@ get-path: context [
 
 
 	;--- Actions ---
-	
-	make: func [
-		proto 	 [red-value!]
-		spec	 [red-value!]
-		return:	 [red-get-path!]
-		/local
-			path [red-get-path!]
-	][
-		#if debug? = yes [if verbose > 0 [print-line "get-path/make"]]
 
-		path: as red-get-path! block/make proto spec
-		path/header: TYPE_GET_PATH
-		path
-	]
-	
 	form: func [
 		p		[red-get-path!]
 		buffer	[red-string!]
@@ -91,10 +77,10 @@ get-path: context [
 			TYPE_PATH
 			"get-path!"
 			;-- General actions --
-			:make
+			INHERIT_ACTION	;make
 			null			;random
 			INHERIT_ACTION	;reflect
-			null			;to
+			INHERIT_ACTION	;to
 			:form
 			:mold
 			INHERIT_ACTION	;eval-path

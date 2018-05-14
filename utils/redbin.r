@@ -3,7 +3,7 @@ REBOL [
 	Author:  "Nenad Rakocevic"
 	File: 	 %redbin.r
 	Tabs:	 4
-	Rights:  "Copyright (C) 2015 Nenad Rakocevic. All rights reserved."
+	Rights:  "Copyright (C) 2015-2018 Red Foundation. All rights reserved."
 	License: "BSD-3 - https://github.com/red/red/blob/master/BSD-3-License.txt"
 ]
 
@@ -89,9 +89,14 @@ context [
 		emit extracts/definitions/:type or either nl? [nl-flag][0]
 	]
 	
+	emit-float-bin: func [f [decimal!] /local bin][
+		bin: IEEE-754/to-binary64 f
+		emit to integer! copy/part bin 4
+		emit to integer! skip bin 4
+	]
+	
 	emit-ctx-info: func [word [any-word!] ctx [word! none!] /local entry pos][
-		unless ctx [emit -1 return -1]				;-- -1 for global context
-		entry: find contexts ctx
+		if any [not ctx	none? entry: find contexts ctx][emit -1 return -1]				;-- -1 for global context
 		either pos: find entry/2 to word! word [
 			emit entry/3
 			(index? pos) - 1
@@ -119,9 +124,7 @@ context [
 	emit-float: func [value [decimal!] /with type /local bin][
 		pad buffer 8
 		emit-type any [type 'TYPE_FLOAT]
-		bin: IEEE-754/to-binary64 value
-		emit to integer! copy/part bin 4
-		emit to integer! skip bin 4
+		emit-float-bin value
 	]
 	
 	emit-fp-special: func [value [issue!]][
@@ -139,13 +142,17 @@ context [
 		pad buffer 8
 		emit-type 'TYPE_PERCENT
 		value: to decimal! to string! copy/part value back tail value
-		bin: IEEE-754/to-binary64 value / 100.0
-		emit to integer! copy/part bin 4
-		emit to integer! skip bin 4
+		emit-float-bin value / 100.0
 	]
 	
 	emit-time: func [value [time!]][
-		emit-float/with (to decimal! value) * 1E9 'TYPE_TIME
+		emit-float/with to decimal! value 'TYPE_TIME
+	]
+	
+	emit-date: func [value [date!] /with zone][
+		emit-type 'TYPE_DATE
+		emit red/encode-date/with value zone
+		emit-float-bin encode-UTC-time value/time any [zone value/zone]
 	]
 
 	emit-char: func [value [integer!]][
@@ -283,6 +290,10 @@ context [
 				remove blk
 				'map
 			]
+			blk/1 = #!date! [
+				emit-date/with blk/2 blk/3
+				exit
+			]
 			'else [type?/word :blk]
 		]
 		emit-type select [
@@ -299,7 +310,7 @@ context [
 		unless type = 'map [emit (index? blk) - 1]		;-- head field
 		emit length? blk
 		if all [not sub debug?][
-			print [index ": block" length? blk #":" copy/part mold/flat blk 60]
+			print [index ": block" length? blk #":" trim/lines copy/part mold/flat blk 60]
 		]
 		nl?: no
 		multi-line?: any [block? blk paren? blk]
@@ -374,6 +385,7 @@ context [
 						datatype! [emit-datatype get-RS-type-ID/word item]
 						logic!	  [emit-logic item]
 						time!	  [emit-time item]
+						date!	  [emit-date item]
 						none! 	  [emit-none]
 						unset! 	  [emit-unset]
 					]
@@ -399,7 +411,7 @@ context [
 		emit length? spec
 		foreach word spec [emit-symbol word]
 		if root [
-			if debug? [print [index ": context :" copy/part mold/flat spec 50 "," stack? "," self?]]
+			if debug? [print [index ": context :" trim/lines copy/part mold/flat spec 50 "," stack? "," self?]]
 			index: index + 1
 		]
 		index - 1
@@ -412,7 +424,6 @@ context [
 		clear sym-string
 		clear symbols
 		clear contexts
-		index: 0
 	]
 	
 	finish: func [spec [block!] /local flags compress? data out len][
@@ -429,13 +440,18 @@ context [
 		]
 		insert buffer header
 		
-		if compress?: find spec 'compress [
-			flags: flags or #{02}
-			out: make binary! len: length? buffer
+		if all [
+			compress?: find spec 'compress
+			128 < len: length? buffer
+		][
+			out: make binary! len
 			insert/dup out null len
 			len: redc/crush-compress buffer len out
-			clear buffer
-			insert/part buffer out len
+			if len > 0 [
+				flags: flags or #{02}
+				clear buffer
+				insert/part buffer out len
+			]
 		]
 		
 		clear header

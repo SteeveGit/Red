@@ -3,7 +3,7 @@ Red [
 	Author:  "Nenad Rakocevic & Peter W A Wood"
 	File: 	 %load-test.reds
 	Tabs:	 4
-	Rights:  "Copyright (C) 2011-2015 Nenad Rakocevic & Peter W A Wood. All rights reserved."
+	Rights:  "Copyright (C) 2011-2015 Red Foundation. All rights reserved."
 	License: "BSD-3 - https://github.com/red/red/blob/origin/BSD-3-License.txt"
 ]
 
@@ -62,10 +62,9 @@ Red [
 	--test-- "load-42"	--assert "-9.3e-9"		= mold load "-93E-10"
 	--test-- "load-43"	--assert "0.0"			= mold load "2183167012312112312312.23538020374420446192e-370"
 	--test-- "load-44"	--assert 1.3			== load "1,3"
-comment { #2009
 	--test-- "load-45"	--assert 2147483648.0	== load "2147483648"
 	--test-- "load-46"	--assert -2147483649.0	== load "-2147483649"
-}
+
 ===end-group===
 
 ===start-group=== "Load integer tests"
@@ -223,6 +222,21 @@ comment { #2009
 			first [a:]
 			first fourth fourth fourth lo2-blk
 		--assert 1 == second fourth fourth fourth lo2-blk
+
+===end-group===
+
+===start-group=== "load date tests"
+
+	--test-- "load-date-1"	--assert 3-Mar-0000/13:44:24+09:45  = load "3-Mar-0000/13:44:24+09:45"
+	--test-- "load-date-2"	--assert 14-Jan-2046/9:34:48-12:15  = load "14-Jan-2046/9:34:48-12:15"
+	--test-- "load-date-3"	--assert 19-Nov-4262/9:41:12-01:30  = load "19-Nov-4262/9:41:12-01:30"
+	--test-- "load-date-4"	--assert 12-Feb-1864/3:26:00-14:30  = load "12-Feb-1864/3:26:00-14:30"
+	--test-- "load-date-5"	--assert 29-Jul-4351/8:14:00+09:30  = load "29-Jul-4351/8:14:00+09:30"
+	--test-- "load-date-6"	--assert 18-Dec-1884/22:30:48-07:00 = load "18-Dec-1884/22:30:48-07:00"
+	--test-- "load-date-7"	--assert 21-May-5509/0:14:24-03:00  = load "21-May-5509/0:14:24-03:00"
+	--test-- "load-date-8"	--assert 23-Apr-4622/4:22:48+05:30  = load "23-Apr-4622/4:22:48+05:30"
+	--test-- "load-date-9"	--assert 22-Feb-1583/16:36:48-14:45 = load "22-Feb-1583/16:36:48-14:45"
+	--test-- "load-date-10"	--assert 26-Feb-6712/17:07:12-10:00 = load "26-Feb-6712/17:07:12-10:00"
 
 ===end-group===
 

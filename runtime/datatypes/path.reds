@@ -3,7 +3,7 @@ Red/System [
 	Author:  "Nenad Rakocevic"
 	File: 	 %path.reds
 	Tabs:	 4
-	Rights:  "Copyright (C) 2011-2015 Nenad Rakocevic. All rights reserved."
+	Rights:  "Copyright (C) 2011-2018 Red Foundation. All rights reserved."
 	License: {
 		Distributed under the Boost Software License, Version 1.0.
 		See https://github.com/red/red/blob/master/BSL-License.txt
@@ -40,24 +40,84 @@ path: context [
 		copy-cell as red-value! p stack/push*
 	]
 
+	make-at: func [
+		path	[red-path!]
+		size	[integer!]
+		return: [red-path!]
+	][
+		path/header: TYPE_PATH							;-- implicit reset of all header flags
+		path/head: 0
+		path/node: alloc-cells size
+		path/args: null
+		path
+	]
 
 	;--- Actions ---
 	
 	make: func [
-		proto 	 [red-value!]
-		spec	 [red-value!]
-		return:	 [red-path!]
+		proto 	[red-path!]
+		spec	[red-value!]
+		type	[integer!]
+		return:	[red-path!]
 		/local
 			path [red-path!]
+			int  [red-integer!]
+			fl	 [red-float!]
+			size [integer!]
 	][
 		#if debug? = yes [if verbose > 0 [print-line "path/make"]]
 
-		path: as red-path! block/make proto spec
-		path/header: TYPE_PATH
-		path/args:	 null
-		path
+		switch TYPE_OF(spec) [
+			TYPE_INTEGER
+			TYPE_FLOAT 
+			TYPE_PERCENT [
+				size: either TYPE_OF(spec) = TYPE_INTEGER [
+					int: as red-integer! spec
+					int/value
+				][
+					fl: as red-float! spec
+					as-integer fl/value
+				]
+				if zero? size [size: 1]
+				make-at proto size
+				proto/header: type					;-- implicit reset of all header flags
+				proto
+			]
+			TYPE_ANY_LIST
+			TYPE_ANY_PATH [
+				proto: as red-path! block/to as red-block! proto spec type
+				proto/args: null
+				proto
+			]
+			default [
+				fire [TO_ERROR(script bad-make-arg) datatype/push type spec]
+				null
+			]
+		]
 	]
-	
+
+	to: func [
+		proto	[red-path!]
+		spec	[red-value!]
+		type	[integer!]
+		return: [red-path!]
+		/local
+			str [red-string!]
+	][
+		switch TYPE_OF(spec) [
+			TYPE_TYPESET
+			TYPE_OBJECT
+			TYPE_MAP
+			TYPE_VECTOR [block/rs-append as red-block! make-at proto 1 spec]
+			default [
+				proto: as red-path! block/to as red-block! proto spec type
+				proto/args: null
+			]
+		]
+		proto/header: type
+		proto
+	]
+
 	form: func [
 		path	  [red-path!]
 		buffer	  [red-string!]
@@ -74,10 +134,13 @@ path: context [
 		s: GET_BUFFER(path)
 		i: path/head
 		value: s/offset + i
+		cycles/push path/node
 		
 		while [value < s/tail][
-			part: actions/form value buffer arg part
-			if all [OPTION?(arg) part <= 0][return part]
+			unless cycles/detect? value buffer :part no [
+				part: actions/form value buffer arg part
+			]
+			if all [OPTION?(arg) part <= 0][cycles/pop return part]
 			i: i + 1
 			
 			s: GET_BUFFER(path)
@@ -87,6 +150,7 @@ path: context [
 				part: part - 1
 			]
 		]
+		cycles/pop
 		part
 	]
 	
@@ -110,10 +174,13 @@ path: context [
 		s: GET_BUFFER(path)
 		i: path/head
 		value: s/offset + i
+		cycles/push path/node
 
 		while [value < s/tail][
-			part: actions/mold value buffer only? all? flat? arg part 0
-			if all [OPTION?(arg) part <= 0][return part]
+			unless cycles/detect? value buffer :part yes [
+			    part: actions/mold value buffer only? all? flat? arg part 0
+			]
+			if all [OPTION?(arg) part <= 0][cycles/pop return part]
 			i: i + 1
 
 			s: GET_BUFFER(path)
@@ -123,6 +190,7 @@ path: context [
 				part: part - 1
 			]
 		]
+		cycles/pop
 		part
 	]
 	
@@ -150,7 +218,7 @@ path: context [
 			:make
 			null			;random
 			INHERIT_ACTION	;reflect
-			null			;to
+			:to
 			:form
 			:mold
 			INHERIT_ACTION	;eval-path

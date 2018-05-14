@@ -3,7 +3,7 @@ Red/System [
 	Author:  "Nenad Rakocevic"
 	File: 	 %lit-path.reds
 	Tabs:	 4
-	Rights:  "Copyright (C) 2011-2015 Nenad Rakocevic. All rights reserved."
+	Rights:  "Copyright (C) 2011-2018 Red Foundation. All rights reserved."
 	License: {
 		Distributed under the Boost Software License, Version 1.0.
 		See https://github.com/red/red/blob/master/BSL-License.txt
@@ -41,20 +41,6 @@ lit-path: context [
 
 	;--- Actions ---
 	
-	make: func [
-		proto 	 [red-value!]
-		spec	 [red-value!]
-		return:	 [red-lit-path!]
-		/local
-			path [red-lit-path!]
-	][
-		#if debug? = yes [if verbose > 0 [print-line "lit-path/make"]]
-
-		path: as red-lit-path! block/make proto spec
-		path/header: TYPE_LIT_PATH
-		path
-	]
-	
 	form: func [
 		p		[red-lit-path!]
 		buffer	[red-string!]
@@ -91,10 +77,10 @@ lit-path: context [
 			TYPE_PATH
 			"lit-path!"
 			;-- General actions --
-			:make
+			INHERIT_ACTION	;make
 			null			;random
 			INHERIT_ACTION	;reflect
-			null			;to
+			INHERIT_ACTION	;to
 			:form
 			:mold
 			INHERIT_ACTION	;eval-path

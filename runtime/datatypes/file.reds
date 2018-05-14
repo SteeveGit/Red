@@ -3,7 +3,7 @@ Red/System [
 	Author:  "Nenad Rakocevic"
 	File: 	 %file.reds
 	Tabs:	 4
-	Rights:  "Copyright (C) 2013-2015 Nenad Rakocevic. All rights reserved."
+	Rights:  "Copyright (C) 2013-2018 Red Foundation. All rights reserved."
 	License: {
 		Distributed under the Boost Software License, Version 1.0.
 		See https://github.com/red/red/blob/master/red-system/runtime/BSL-License.txt
@@ -70,8 +70,14 @@ file: context [
 		path: platform/get-current-dir :len
 		#either OS = 'Windows [
 			dir: string/load path len UTF-16LE
+			if (string/rs-abs-at dir len - 1) <> as-integer #"\" [
+				string/concatenate-literal dir "\"
+			]
 		][
 			dir: string/load path len UTF-8
+			if (string/rs-abs-at dir len - 1) <> as-integer #"/" [
+				string/concatenate-literal dir "/"
+			]
 		]
 		free as byte-ptr! path
 		dir
@@ -119,10 +125,7 @@ file: context [
 			]
 			s: string/append-char s OS_DIR_SEP
 		][
-			if full? [
-				string/concatenate out get-current-dir -1 0 yes no
-				s: string/append-char GET_BUFFER(out) OS_DIR_SEP
-			]
+			if full? [string/concatenate out get-current-dir -1 0 yes no]
 		]
 
 		while [p < end][
@@ -130,7 +133,6 @@ file: context [
 			s: string/append-char s either c = as-integer #"/" [OS_DIR_SEP][c]
 			p: p + unit
 		]
-		out
 	]
 
 	normalize: func [
@@ -157,43 +159,6 @@ file: context [
 	]
 
 	;-- Actions --
-
-	make: func [
-		proto	 [red-value!]
-		spec	 [red-value!]
-		type	 [integer!]
-		return:	 [red-file!]
-		/local
-			file [red-file!]
-	][
-		#if debug? = yes [if verbose > 0 [print-line "file/make"]]
-
-		file: as red-file! string/make proto spec type
-		set-type as red-value! file TYPE_FILE
-		file
-	]
-
-	to: func [
-		type	[red-datatype!]
-		spec	[red-file!]
-		return: [red-value!]
-		/local
-			t	[integer!]
-	][
-		#if debug? = yes [if verbose > 0 [print-line "file/to"]]
-
-		t: type/value
-		switch t [
-			TYPE_STRING
-			TYPE_URL
-			TYPE_TAG
-			TYPE_EMAIL [
-				set-type copy-cell as cell! spec as cell! type t
-			]
-			default  [--NOT_IMPLEMENTED--]
-		]
-		as red-value! type
-	]
 
 	mold: func [
 		file    [red-file!]
@@ -255,6 +220,21 @@ file: context [
 	]
 
 	;-- I/O actions
+	
+	delete: func [
+		file	[red-value!]
+		return: [red-value!]
+	][
+		as red-value! logic/box simple-io/delete as red-file! file
+	]
+
+	query: func [
+		file	[red-value!]
+		return: [red-value!]
+	][
+		as red-value! simple-io/query as red-file! file
+	]
+	
 	read: func [
 		src		[red-value!]
 		part	[red-value!]
@@ -298,10 +278,10 @@ file: context [
 			TYPE_URL
 			"file!"
 			;-- General actions --
-			:make
+			INHERIT_ACTION	;make
 			null			;random
 			null			;reflect
-			:to
+			INHERIT_ACTION	;to
 			INHERIT_ACTION	;form
 			:mold
 			INHERIT_ACTION	;eval-path
@@ -341,7 +321,7 @@ file: context [
 			INHERIT_ACTION	;next
 			INHERIT_ACTION	;pick
 			INHERIT_ACTION	;poke
-			INHERIT_ACTION	;put
+			null			;put
 			INHERIT_ACTION	;remove
 			INHERIT_ACTION	;reverse
 			INHERIT_ACTION	;select
@@ -355,11 +335,11 @@ file: context [
 			;-- I/O actions --
 			null			;create
 			null			;close
-			null			;delete
+			:delete
 			INHERIT_ACTION	;modify
 			null			;open
 			null			;open?
-			null			;query
+			:query
 			:read
 			null			;rename
 			null			;update

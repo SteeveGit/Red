@@ -3,7 +3,7 @@ Red [
 	Author: ["Nenad Rakocevic" "Kaj de Vos"]
 	File: 	%engine.red
 	Tabs: 	4
-	Rights: "Copyright (C) 2012-2015 Nenad Rakocevic. All rights reserved."
+	Rights: "Copyright (C) 2012-2018 Red Foundation. All rights reserved."
 	License: {
 		Distributed under the Boost Software License, Version 1.0.
 		See https://github.com/red/red/blob/master/BSL-License.txt
@@ -27,22 +27,24 @@ Red [
 	]
 ]
 
-system/state/trace?: no									;-- disable stack trace in console by default
-
 system/console: context [
 
-	prompt: "red>> "
-	history: make block! 200
-	limit:	 67
-	catch?:	 no											;-- YES: force script to fallback into the console
-	count:	 [0 0 0]									;-- multiline counters for [squared curly parens]
+	prompt:		">> "
+	result:		"=="
+	history:	make block! 200
+	size:		0x0
+	running?:	no
+	catch?:		no										;-- YES: force script to fallback into the console
+	count:		[0 0 0]									;-- multiline counters for [squared curly parens]
+	ws:			charset " ^/^M^-"
 
-	gui?: #system [logic/box #either gui-console? = yes [yes][no]]
+	gui?:	#system [logic/box #either gui-console? = yes [yes][no]]
 	
-	read-argument: function [][
-		if args: system/options/args [
+	read-argument: function [/local value][
+		if args: system/script/args [
 			--catch: "--catch"
 			if system/console/catch?: make logic! pos: find args --catch [
+				remove find system/options/args --catch
 				remove/part pos 1 + length? --catch		;-- remove extra space too
 			]
 
@@ -59,27 +61,41 @@ system/console: context [
 					remove back tail file
 				]
 				file: to-red-file file
-				unless src: attempt [read file][
-					print "*** Error: cannot access argument file"
+				
+				either error? set/any 'src try [read file][
+					print src
+					src: none
 					;quit/return -1
+				][
+					system/options/script: file
+					remove system/options/args
+					args: system/script/args
+					remove/part args any [
+						find/tail next args pick {" } args/1 = #"^""
+						tail args
+					]
+					trim/head args
 				]
-				change-dir first split-path file
+				path: first split-path file
+				if path <> %./ [change-dir path]
 			]
 			src
 		]
 	]
 
-	init-console: routine [
+	init: routine [
 		str [string!]
 		/local
 			ret
 	][
-		#if OS = 'Windows [
+		#either OS = 'Windows [
 			;ret: AttachConsole -1
 			;if zero? ret [print-line "ReadConsole failed!" halt]
 
 			ret: SetConsoleTitle as c-string! string/rs-head str
 			if zero? ret [print-line "SetConsoleTitle failed!" halt]
+		][
+			#if gui-console? = no [terminal/pasting?: no]
 		]
 	]
 
@@ -98,7 +114,7 @@ system/console: context [
 				| #"]" (if zero? count/2 [count/1: count/1 - 1])
 				| #"(" (if zero? count/2 [count/3: count/3 + 1])
 				| #")" (if zero? count/2 [count/3: count/3 - 1])
-				| dbl-quote any [escaped | dbl-quote break | skip]
+				| dbl-quote if (zero? count/2) any [escaped | dbl-quote break | skip]
 				| #"{" (count/2: count/2 + 1) any [
 					escaped
 					| #"{" (count/2: count/2 + 1)
@@ -113,6 +129,7 @@ system/console: context [
 	]
 	
 	try-do: func [code /local result return: [any-type!]][
+		running?: yes
 		set/any 'result try/all [
 			either 'halt-request = set/any 'result catch/name code 'console [
 				print "(halted)"						;-- return an unset value
@@ -120,6 +137,7 @@ system/console: context [
 				:result
 			]
 		]
+		running?: no
 		:result
 	]
 
@@ -143,25 +161,29 @@ system/console: context [
 		]
 	]
 
-	do-command: function [][
+	do-command: function [/local result err][
 		if error? code: try [load/all buffer][print code]
 
 		unless any [error? code tail? code][
 			set/any 'result try-do code
-			
 			case [
 				error? :result [
-					print result
+					print [result lf]
 				]
 				not unset? :result [
-					if limit = length? result: mold/part :result limit [	;-- optimized for width = 72
-						clear back tail result
-						append result "..."
+					if error? set/any 'err try [		;-- catch eventual MOLD errors
+						limit: size/x - 13
+						if limit = length? result: mold/part :result limit [ ;-- optimized for width = 72
+							clear back tail result
+							append result "..."
+						]
+						print [system/console/result result]
+					][
+						print :err
 					]
-					print ["==" result]
 				]
 			]
-			unless last-lf? [prin lf]
+			if all [not last-lf? not gui?][prin lf]
 		]
 		clear buffer
 	]
@@ -207,22 +229,36 @@ system/console: context [
 	]
 
 	launch: function [/local result][
-		either script: read-argument [
-			either error? script: try-do [load script][
-				print :script
-			][
-				either not all [
-					block? script
-					script: find/case script 'Red
-					block? script/2 
+		either script: src: read-argument [
+			parse script [some [[to "Red" pos: 3 skip any ws #"[" to end] | skip]]
+		
+			either script: pos [
+				either error? script: try-do [load script][
+					print :script
 				][
-					print "*** Error: not a Red program!"
-					;quit/return -2
-				][
-					set/any 'result try-do skip script 2
-					if error? :result [print result]
+					either not all [
+						block? script
+						script: find/case script 'Red
+						block? script/2 
+					][
+						print [
+							"*** Error:"
+							either find src "Red/System" [
+								"contains Red/System code which requires compilation!"
+							][
+								"not a Red program!"
+							]
+						]
+						;quit/return -2
+					][
+						expand-directives script
+						set/any 'result try-do skip script 2
+						if error? :result [print result]
+					]
 				]
-			]
+			][
+				print "*** Error: Red header not found!"
+			]	
 			if any [catch? gui?][run/no-banner]
 		][
 			run
@@ -231,6 +267,48 @@ system/console: context [
 ]
 
 ;-- Console-oriented function definitions
+
+list-dir: function [
+	"Displays a list of files and directories from given folder or current one"
+	dir [any-type!]  "Folder to list"
+	/col			 "Forces the display in a given number of columns"
+		n [integer!] "Number of columns"
+][
+	unless value? 'dir [dir: %.]
+	
+	unless find [file! word! path!] type?/word :dir [
+		cause-error 'script 'expect-arg ['list-dir type? :dir 'dir]
+	]
+	list: read normalize-dir dir
+	limit: system/console/size/x - 13
+	max-sz: either n [
+		limit / n - n					;-- account for n extra spaces
+	][
+		n: max 1 limit / 22				;-- account for n extra spaces
+		22 - n
+	]
+
+	while [not tail? list][
+		loop n [
+			if max-sz <= length? name: list/1 [
+				name: append copy/part name max-sz - 4 "..."
+			]
+			prin tab
+			prin pad form name max-sz
+			prin " "
+			if tail? list: next list [exit]
+		]
+		prin lf
+	]
+	()
+]
+
+expand: func [
+	"Preprocess the argument block and display the output (console only)"
+	blk [block!] "Block to expand"
+][
+	probe expand-directives/clean blk
+]
 
 ls:		func ['dir [any-type!]][list-dir :dir]
 ll:		func ['dir [any-type!]][list-dir/col :dir 1]

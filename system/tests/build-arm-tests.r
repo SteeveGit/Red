@@ -59,7 +59,7 @@ compile-test: func [test-file [file!]] [
 	exe: arm-dir/:exe
 	cmd: join "" [  to-local-file system/options/boot " -sc "
                     to-local-file clean-path %../../red.r
-                    " -t " target " -o " exe " "
+                    " -r -t " target " -o " exe " "
     				to-local-file test-file	
     			]
     clear output
@@ -85,6 +85,14 @@ replace src {"libtest-dll1.dylib"} {"./libtest-dll1.dylib"}
 write arm-dir/dylib-auto-test.reds src
 compile-test arm-dir/dylib-auto-test.reds
 if exists? arm-dir/dylib-auto-test.reds [delete arm-dir/dylib-auto-test.reds]
+
+;; get the correct structlib
+structlib-version: switch target [
+	"Linux-ARM" [%libstructlib-armsf.so]
+	"Android" [%libstructlib-android.so]
+	"RPi" [%libstructlib-armhf.so]
+]
+write/binary arm-dir/libstructlib.so read/binary join %source/units/libs/ structlib-version
 
 ;; get the list of test source files
 test-files: copy []

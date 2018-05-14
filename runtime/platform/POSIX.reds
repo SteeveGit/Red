@@ -3,7 +3,7 @@ Red/System [
 	Author:  "Nenad Rakocevic"
 	File: 	 %POSIX.reds
 	Tabs:	 4
-	Rights:  "Copyright (C) 2011-2015 Nenad Rakocevic. All rights reserved."
+	Rights:  "Copyright (C) 2011-2018 Red Foundation. All rights reserved."
 	License: {
 		Distributed under the Boost Software License, Version 1.0.
 		See https://github.com/red/red/blob/master/red-system/runtime/BSL-License.txt
@@ -15,8 +15,6 @@ Red/System [
 #define __LC_ALL   6
 
 #define RTLD_LAZY	1
-
-environ: as int-ptr! 0
 
 timeval!: alias struct! [
 	tv_sec	[integer!]
@@ -38,26 +36,62 @@ tm!: alias struct! [
 	zone	[c-string!]		;-- Timezone abbreviation
 ]
 
+; Wordexp enums
+#define	WRDE_DOOFFS		1
+#define	WRDE_APPEND		2
+#define	WRDE_NOCMD		4
+#define	WRDE_REUSE		8
+#define	WRDE_SHOWERR	16
+#define	WRDE_UNDEF		32
+#define	__WRDE_FLAGS	63
+
+#define	WRDE_NOSPACE	1
+#define	WRDE_BADCHAR	2
+#define	WRDE_BADVAL		3
+#define	WRDE_CMDSUB		4
+#define	WRDE_SYNTAX		5
+
+; Wordexp types
+wordexp-type!: alias struct! [
+	we_wordc  [integer!]
+	we_wordv  [str-array!]
+	we_offs   [integer!]
+]
+
+pollfd!: alias struct! [
+	fd		[integer!]
+	events	[integer!]			;-- events / revents
+]
+
+#define POLLIN		0001h
+#define POLLPRI		0002h
+#define POLLOUT		0004h
+#define POLLERR		0008h
+#define POLLHUP		0010h
+#define POLLNVAL	0020h
+
+; Values for the second argument to fcntl
+#define F_DUPFD		0
+#define F_GETFD		1
+#define F_SETFD		2
+#define F_GETFL		3
+#define F_SETFL		4
+
 #import [
 	LIBC-file cdecl [
-		wprintf: "wprintf" [
-			[variadic]
-			return: 	[integer!]
-		]
 		setlocale: "setlocale" [
 			category	[integer!]
 			locale		[c-string!]
 			return:		[c-string!]
 		]
-		dlopen:	"dlopen" [
-			dllpath		[c-string!]
-			flags		[integer!]
-			return:		[integer!]
-		]
-		dlsym: "dlsym" [
-			handle		[integer!]
-			symbol		[c-string!]
-			return:		[int-ptr!]
+		sysctl: "sysctl" [
+			name	[int-ptr!]
+			namelen [integer!]
+			oldp	[byte-ptr!]
+			oldlenp [int-ptr!]
+			newp	[byte-ptr!]
+			newlen	[integer!]
+			return: [integer!]
 		]
 		getcwd: "getcwd" [
 			buf		[byte-ptr!]
@@ -91,6 +125,15 @@ tm!: alias struct! [
 			tz		[integer!]			;-- obsolete
 			return: [integer!]			;-- 0: success -1: failure
 		]
+		difftime: "difftime" [
+			end		[integer!]
+			begin	[integer!]
+			return: [float!]
+		]
+		time: "time" [
+			ptr		[int-ptr!]
+			return: [integer!]
+		]
 		gmtime: "gmtime" [
 			tv_sec	[int-ptr!]
 			return: [tm!]
@@ -98,6 +141,91 @@ tm!: alias struct! [
 		localtime: "localtime" [
 			tv_sec	[int-ptr!]
 			return: [tm!]
+		]
+		mktime: "mktime" [
+			tm		[tm!]
+			return: [integer!]
+		]
+		fork: "fork" [
+			return:        [integer!]
+		]
+		sleep: "sleep" [
+			nb             [integer!]
+			return:        [integer!]
+		]
+		execvp: "execvp" [
+			cmd            [c-string!]
+			args-list      [str-array!]
+			return:        [integer!]
+		]
+		wordexp: "wordexp" [
+			words          [c-string!]
+			pwordexp       [wordexp-type!]
+			flags          [integer!]
+			return:        [integer!]
+		]
+		wordfree: "wordfree" [
+			pwordexp       [wordexp-type!]
+			return:        [integer!]
+		]
+		wait-child: "wait" [
+			status         [int-ptr!]
+			return:        [integer!]
+		]
+		waitpid: "waitpid" [
+			pid            [integer!]
+			status         [int-ptr!]
+			options        [integer!]
+			return:        [integer!]
+		]
+		pipe: "pipe" [
+			pipedes        [int-ptr!]  "Pointer to a 2 integers array"
+			return:        [integer!]
+		]
+		dup2: "dup2" [
+			fd             [integer!]
+			fd2            [integer!]
+			return:        [integer!]
+		]
+		_open:	"open" [
+			filename	[c-string!]
+			flags		[integer!]
+			mode		[integer!]
+			return:		[integer!]
+		]
+		io-open: "open" [
+			filename		[c-string!]
+			flags			[integer!]
+			return:			[integer!]
+		]
+		io-close: "close" [
+			fd             [integer!]
+			return:        [integer!]
+		]
+		io-read: "read" [
+			fd             [integer!]
+			buf            [byte-ptr!]
+			nbytes         [integer!]
+			return:        [integer!]  "Number of bytes read or error"
+		]
+		io-write: "write" [
+			fd             [integer!]
+			buf            [byte-ptr!]
+			nbytes         [integer!]
+			return:        [integer!]  "Number of bytes written or error"
+		]
+		fcntl: "fcntl" [
+			[variadic]
+			; fd           [integer!]    "File descriptor"
+			; cmd          [integer!]    "Command"
+			; ...                        "Optional arguments"
+			return:        [integer!]
+		]
+		poll: "poll" [
+			fds				[pollfd!]
+			nfds			[integer!]
+			timeout 		[integer!]
+			return: 		[integer!]
 		]
 	]
 ]
@@ -243,6 +371,13 @@ print-line-Latin1: func [
 ;-- Red/System Unicode replacement printing functions
 ;-------------------------------------------
 
+sprintf-buf: "0000000000000000000000000000000" ;-- 32 bytes wide, big enough.
+
+flush: func [len [integer!]][
+	printf sprintf-buf
+	dyn-print/rs-print sprintf-buf len no
+]
+
 prin*: func [
 	s		[c-string!]
 	return: [c-string!]
@@ -260,31 +395,32 @@ prin*: func [
 		]
 		p: p + 1
 	]
+	dyn-print/rs-print s as-integer p - s no
 	s
 ]
 
 prin-int*: func [i [integer!] return: [integer!]][
-	printf ["%i" i]										;-- UTF-8 literal string
+	flush sprintf [sprintf-buf "%i" i]
 	i
 ]
 
 prin-2hex*: func [i [integer!] return: [integer!]][
-	printf ["%02X" i]									;-- UTF-8 literal string
+	flush sprintf [sprintf-buf "%02X" i]
 	i
 ]
 
 prin-hex*: func [i [integer!] return: [integer!]][
-	printf ["%08X" i]									;-- UTF-8 literal string
+	flush sprintf [sprintf-buf "%08X" i]
 	i
 ]
 
 prin-float*: func [f [float!] return: [float!]][
-	printf ["%.16g" f]									;-- UTF-8 literal string
+	flush sprintf [sprintf-buf "%.16g" f]
 	f
 ]
 
 prin-float32*: func [f [float32!] return: [float32!]][
-	printf ["%.7g" as-float f]							;-- UTF-8 literal string
+	flush sprintf [sprintf-buf "%.7g" as-float f]
 	f
 ]
 
@@ -346,16 +482,61 @@ get-time: func [
 	precise? [logic!]
 	return:  [float!]
 	/local
-		time	[timeval!]
+		time	[timeval! value]
 		tm		[tm!]
 		micro	[float!]
 		t		[float!]
 ][
-	time: declare timeval!
+	gettimeofday time 0
+	tm: gmtime as int-ptr! time
+	micro: 0.0
+	if precise? [
+		micro: as-float time/tv_usec
+		micro: micro / 1E6
+	]
+	t: as-float tm/hour * 3600 + (tm/min * 60) + tm/sec
+	t + micro
+]
+
+get-timezone: func [
+	return: [integer!]
+	/local
+		t	[integer!]
+		t2	[integer!]
+		tm	[tm!]
+][
+	t: 0
+	time :t
+	tm: localtime :t
+	tm/isdst: 0
+	t2: mktime tm
+	t: as-integer difftime t2 mktime gmtime :t
+	t / 60
+]
+
+get-date: func [
+	utc?	[logic!]
+	return:	[integer!]
+	/local
+		time	[timeval! value]
+		tm		[tm!]
+		bias	[integer!]
+		y		[integer!]
+		m		[integer!]
+		d		[integer!]
+		h		[integer!]
+][
 	gettimeofday time 0
 	tm: either utc? [gmtime as int-ptr! time][localtime as int-ptr! time]
-	micro: 0.0
-	if precise? [micro: as-float time/tv_usec]
-	t: as-float tm/hour * 3600 + (tm/min * 60) + tm/sec * 1000
-	t * 1E3 + micro * 1E3			;-- nano second
+	y: tm/year + 1900
+	m: tm/mon + 1
+	d: tm/mday
+
+	either utc? [h: 0][
+		bias: get-timezone
+		h: bias / 60
+		if h < 0 [h: 0 - h and 0Fh or 10h]	;-- properly set the sign bit
+		h: h << 2 or (bias // 60 / 15 and 03h)
+	]
+	y << 17 or (m << 12) or (d << 7) or h
 ]

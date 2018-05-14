@@ -3,7 +3,7 @@ Red/System [
 	Author:  "Nenad Rakocevic"
 	File: 	 %word.reds
 	Tabs:	 4
-	Rights:  "Copyright (C) 2011-2015 Nenad Rakocevic. All rights reserved."
+	Rights:  "Copyright (C) 2011-2018 Red Foundation. All rights reserved."
 	License: {
 		Distributed under the Boost Software License, Version 1.0.
 		See https://github.com/red/red/blob/master/BSL-License.txt
@@ -31,7 +31,7 @@ word: context [
 		str 	[c-string!]
 		return:	[red-word!]
 	][
-		_context/add-global-word symbol/make str yes
+		_context/add-global-word symbol/make str yes yes
 	]
 	
 	make-at: func [
@@ -157,6 +157,10 @@ word: context [
 		#if debug? = yes [if verbose > 0 [print-line "word/get-local"]]
 
 		ctx: TO_CTX(node)
+		if null? ctx/values [
+			s: as series! ctx/symbols/value
+			fire [TO_ERROR(script not-defined) s/offset + index]
+		]
 		
 		value: either ON_STACK?(ctx) [
 			(as red-value! ctx/values) + index
@@ -194,10 +198,24 @@ word: context [
 			value  [red-value!]
 			values [series!]
 	][
-		value: stack/top - 1
+		value: stack/get-top
 		ctx: TO_CTX(node)
 		values: as series! ctx/values/value
 		stack/push values/offset + index
+		copy-cell value values/offset + index
+	]
+	
+	set-in-ctx: func [
+		node	[node!]
+		index	[integer!]
+		/local
+			ctx	   [red-context!]
+			value  [red-value!]
+			values [series!]
+	][
+		value: stack/get-top
+		ctx: TO_CTX(node)
+		values: as series! ctx/values/value
 		copy-cell value values/offset + index
 	]
 	
@@ -256,7 +274,7 @@ word: context [
 		value
 	]
 
-	to-string: func [
+	as-string: func [
 		w		[red-word!]
 		return: [red-string!]
 		/local
@@ -265,8 +283,33 @@ word: context [
 	][
 		s: GET_BUFFER(symbols)
 		str: as red-string! stack/push s/offset + w/symbol - 1
+		str/header: TYPE_STRING
 		str/head: 0
+		str/cache: null
 		str
+	]
+	
+	check-1st-char: func [
+		w [red-word!]
+		/local
+			sym [red-symbol!]
+			buf	[series!]
+			s   [c-string!]
+			cp  [integer!]
+			c   [byte!]
+	][
+		sym: symbol/get w/symbol
+		buf: as series! sym/node/value
+		cp: string/get-char as byte-ptr! buf/offset GET_UNIT(buf)
+		if cp > 127 [exit]
+		c: as-byte cp
+		
+		s: {/\^^,[](){}"#%$@:;'0123465798}
+		until [
+			if c = s/1 [fire [TO_ERROR(syntax bad-char) w]]
+			s: s + 1
+			s/1 = null-byte
+		]
 	]
 
 	;-- Actions --
@@ -309,6 +352,64 @@ word: context [
 		form w buffer arg part
 	]
 
+	to: func [
+		proto	[red-value!]
+		spec	[red-value!]
+		type	[integer!]
+		return: [red-value!]
+		/local
+			char	[red-char!]
+			dt		[red-datatype!]
+			bool	[red-logic!]
+			str		[red-string!]
+			name	[names!]
+			cstr	[c-string!]
+			len		[integer!]
+			val		[red-value!]
+	][
+		#if debug? = yes [if verbose > 0 [print-line "word/to"]]
+
+		switch TYPE_OF(spec) [
+			TYPE_WORD
+			TYPE_SET_WORD
+			TYPE_GET_WORD
+			TYPE_LIT_WORD
+			TYPE_REFINEMENT [proto: spec]
+			TYPE_ISSUE [
+				check-1st-char as red-word! spec
+				proto: spec
+			]
+			TYPE_STRING [
+				len: 0
+				val: as red-value! :len
+				copy-cell spec val					;-- save spec, load-value will change it
+				proto: load-value as red-string! spec
+				unless any-word? TYPE_OF(proto) [fire [TO_ERROR(syntax bad-char) val]]
+			]
+			TYPE_CHAR [
+				char: as red-char! spec
+				str: string/make-at stack/push* 1 Latin1
+				string/append-char GET_BUFFER(str) char/value
+				proto: load-value str
+				unless any-word? TYPE_OF(proto) [fire [TO_ERROR(syntax bad-char) str]]
+			]
+			TYPE_DATATYPE [
+				dt: as red-datatype! spec
+				name: name-table + dt/value
+				copy-cell as cell! name/word proto
+			]
+			TYPE_LOGIC [
+				bool: as red-logic! spec
+				cstr: either bool/value ["true"]["false"]
+				make-at symbol/make cstr proto
+			]
+			default [fire [TO_ERROR(script bad-to-arg) datatype/push type spec]]
+		]
+
+		proto/header: type
+		proto
+	]
+
 	any-word?: func [									;@@ discard it when ANY_WORD? available
 		type	[integer!]
 		return: [logic!]
@@ -319,7 +420,7 @@ word: context [
 			type = TYPE_SET_WORD
 			type = TYPE_LIT_WORD
 			type = TYPE_REFINEMENT
-			type = TYPE_ISSUE
+			type = TYPE_ISSUE							;-- do not equal it to other word types
 		]
 	]
 	
@@ -336,11 +437,18 @@ word: context [
 			str2 [red-string!]
 	][
 		#if debug? = yes [if verbose > 0 [print-line "word/compare"]]
+		
 		type: TYPE_OF(arg2)
-		unless any-word? type [RETURN_COMPARE_OTHER]	;@@ replace by ANY_WORD? when available
+		if any [
+			all [type = TYPE_ISSUE TYPE_OF(arg1) <> TYPE_ISSUE]
+			not any-word? type
+		][
+			RETURN_COMPARE_OTHER						;@@ replace by ANY_WORD? when available
+		]
 		switch op [
 			COMP_EQUAL
-			COMP_NOT_EQUAL [
+			COMP_NOT_EQUAL
+			COMP_FIND [
 				res: as-integer not EQUAL_WORDS?(arg1 arg2)
 			]
 			COMP_SAME
@@ -348,6 +456,16 @@ word: context [
 				res: as-integer any [
 					type <> TYPE_OF(arg1)
 					arg1/symbol <> arg2/symbol
+				]
+			]
+			COMP_STRICT_EQUAL_WORD [
+				either any [
+					all [TYPE_OF(arg1) = TYPE_WORD type = TYPE_LIT_WORD]
+					all [TYPE_OF(arg1) = TYPE_LIT_WORD type = TYPE_WORD]
+				][
+					res: as-integer arg1/symbol <> arg2/symbol
+				][
+					res: as-integer any [type <> TYPE_OF(arg1) arg1/symbol <> arg2/symbol]
 				]
 			]
 			default [
@@ -386,10 +504,10 @@ word: context [
 			TYPE_SYMBOL
 			"word!"
 			;-- General actions --
-			null			;make
+			:to				;make
 			null			;random
 			null			;reflect
-			null			;to
+			:to
 			:form
 			:mold
 			null			;eval-path

@@ -3,7 +3,7 @@ Red/System [
 	Author:  "Nenad Rakocevic"
 	File: 	 %issue.reds
 	Tabs:	 4
-	Rights:  "Copyright (C) 2011-2015 Nenad Rakocevic. All rights reserved."
+	Rights:  "Copyright (C) 2011-2018 Red Foundation. All rights reserved."
 	License: {
 		Distributed under the Boost Software License, Version 1.0.
 		See https://github.com/red/red/blob/master/red-system/runtime/BSL-License.txt
@@ -47,44 +47,55 @@ issue: context [
 	;-- Actions --
 	
 	to: func [
-		type	[red-datatype!]
+		proto	[red-value!]
 		spec	[red-value!]
+		type	[integer!]
 		return: [red-value!]
 		/local
-			issue [red-word!]
-			str   [red-string!]
-			bin   [red-binary!]
-			s	  [series!]
-			unit  [integer!]
+			char	[red-char!]
+			str		[red-string!]
+			w		[red-word!]
+			sym 	[integer!]
 	][
 		#if debug? = yes [if verbose > 0 [print-line "issue/to"]]
 
-		switch type/value [
-			TYPE_BINARY [
-				issue: as red-word! spec
-				str: as red-string! stack/push as red-value! symbol/get issue/symbol
-				str/head: 0								;-- /head = -1 (casted from symbol!)
-				s: GET_BUFFER(str)
-				unit: GET_UNIT(s)
-				
-				bin: as red-binary! stack/arguments
-				bin/head: 0
-				bin/header: TYPE_BINARY
-				bin/node: binary/decode-16 
-					(as byte-ptr! s/offset) + (str/head << (log-b unit))
-					string/rs-length? str
-					unit
-				stack/pop 1
-				if null? bin/node [bin/header: TYPE_NONE]
-				as red-value! bin
+		switch TYPE_OF(spec) [
+			TYPE_WORD
+			TYPE_SET_WORD
+			TYPE_GET_WORD
+			TYPE_LIT_WORD
+			TYPE_REFINEMENT
+			TYPE_ISSUE [
+				proto: spec
 			]
-			default  [
-				fire [TO_ERROR(script bad-to-arg) type spec]
-				null
+			TYPE_CHAR
+			TYPE_STRING	[
+				either TYPE_OF(spec) = TYPE_CHAR [
+					char: as red-char! spec
+					str: string/make-at stack/push* 1 Latin1
+					string/append-char GET_BUFFER(str) char/value
+				][
+					str: as red-string! spec
+					if str/head > 0 [
+						str: as red-string! _series/copy
+							as red-series! spec
+							as red-series! proto
+							null no null
+					]
+				]
+				sym: symbol/make-alt str					;-- convert before altering proto slot
+
+				w: as red-word! proto
+				w/ctx: global-ctx
+				w/symbol: sym
+				w/index: -1
 			]
+			default [word/to proto spec type]
 		]
+		proto/header: type
+		proto
 	]
-	
+
 	mold: func [
 		w	    [red-word!]
 		buffer	[red-string!]
@@ -102,13 +113,25 @@ issue: context [
 		word/form w buffer arg part - 1
 	]
 	
+	compare: func [
+		arg1	 [red-word!]							;-- first operand
+		arg2	 [red-word!]							;-- second operand
+		op		 [integer!]								;-- type of comparison
+		return:	 [integer!]
+	][
+		#if debug? = yes [if verbose > 0 [print-line "issue/compare"]]
+		
+		if TYPE_OF(arg2) <> TYPE_ISSUE [RETURN_COMPARE_OTHER]	;@@ replace by ANY_WORD? when available
+		word/compare arg1 arg2 op
+	]
+	
 	init: does [
 		datatype/register [
 			TYPE_ISSUE
 			TYPE_WORD
 			"issue!"
 			;-- General actions --
-			null			;make
+			INHERIT_ACTION	;make
 			null			;random
 			null			;reflect
 			:to
@@ -116,7 +139,7 @@ issue: context [
 			:mold
 			null			;eval-path
 			null			;set-path
-			INHERIT_ACTION	;compare
+			:compare
 			;-- Scalar actions --
 			null			;absolute
 			null			;add

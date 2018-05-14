@@ -3,7 +3,7 @@ Red/System [
 	Author:  "Nenad Rakocevic"
 	File: 	 %event.reds
 	Tabs:	 4
-	Rights:  "Copyright (C) 2015 Nenad Rakocevic. All rights reserved."
+	Rights:  "Copyright (C) 2015-2018 Red Foundation. All rights reserved."
 	License: {
 		Distributed under the Boost Software License, Version 1.0.
 		See https://github.com/red/red/blob/master/BSL-License.txt
@@ -22,9 +22,10 @@ event: context [
 	;-- Actions --
 	
 	make: func [
-		proto	 [red-value!]
-		spec	 [red-value!]
-		return:	 [red-point!]
+		proto	[red-value!]
+		spec	[red-value!]
+		type	[integer!]
+		return:	[red-point!]
 	][
 		#if debug? = yes [if verbose > 0 [print-line "event/make"]]
 
@@ -74,6 +75,7 @@ event: context [
 		if type <> TYPE_EVENT [RETURN_COMPARE_OTHER]
 		switch op [
 			COMP_EQUAL
+			COMP_FIND
 			COMP_SAME
 			COMP_STRICT_EQUAL
 			COMP_NOT_EQUAL [res: as-integer type <> TYPE_EVENT]

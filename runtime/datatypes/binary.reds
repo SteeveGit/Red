@@ -3,7 +3,7 @@ Red/System [
 	Author:  "Qingtian Xie"
 	File: 	 %binary.reds
 	Tabs:	 4
-	Rights:  "Copyright (C) 2015 Nenad Rakocevic & Qingtian Xie. All rights reserved."
+	Rights:  "Copyright (C) 2015 Nenad Rakocevic &-2018 Red Foundation. All rights reserved."
 	License: {
 		Distributed under the Boost Software License, Version 1.0.
 		See https://github.com/red/red/blob/master/BSL-License.txt
@@ -187,7 +187,47 @@ binary: context [
 		if p + part > (as byte-ptr! s/tail) [s/tail: as cell! p + part]
 		p
 	]
-	
+
+	from-integer: func [
+		int		[integer!]
+		bin		[red-binary!]
+		/local
+			s	[series!]
+			p	[byte-ptr!]
+	][
+		s: GET_BUFFER(bin)
+		p: (as byte-ptr! s/tail) + 4
+		s/tail: as cell! p
+		loop 4 [
+			p: p - 1
+			p/value: as byte! int
+			int: int >> 8
+		]
+	]
+
+	from-issue: func [
+		issue	[red-word!]
+		bin		[red-binary!]
+		/local
+			str  [red-string!]
+			s	 [series!]
+			unit [integer!]
+	][
+		str: as red-string! stack/push as red-value! symbol/get issue/symbol
+		str/head: 0								;-- /head = -1 (casted from symbol!)
+		s: GET_BUFFER(str)
+		unit: GET_UNIT(s)
+		
+		bin/head: 0
+		bin/header: TYPE_BINARY
+		bin/node: decode-16 
+			(as byte-ptr! s/offset) + (str/head << (log-b unit))
+			string/rs-length? str
+			unit
+		stack/pop 1
+		if null? bin/node [fire [TO_ERROR(script invalid-data) issue]]
+	]
+
 	equal?: func [
 		bin1	[red-binary!]
 		bin2	[red-binary!]
@@ -213,7 +253,7 @@ binary: context [
 		if op = COMP_SAME [return either same? [0][-1]]
 		if all [
 			same?
-			any [op = COMP_EQUAL op = COMP_STRICT_EQUAL op = COMP_NOT_EQUAL]
+			any [op = COMP_EQUAL op = COMP_FIND op = COMP_STRICT_EQUAL op = COMP_NOT_EQUAL]
 		][return 0]
 
 		s1: GET_BUFFER(bin1)
@@ -224,12 +264,12 @@ binary: context [
 
 		either match? [
 			if zero? len2 [
-				return as-integer all [op <> COMP_EQUAL op <> COMP_STRICT_EQUAL]
+				return as-integer all [op <> COMP_EQUAL op <> COMP_FIND op <> COMP_STRICT_EQUAL]
 			]
 		][
 			either len1 <> len2 [							;-- shortcut exit for different sizes
 				if any [
-					op = COMP_EQUAL op = COMP_STRICT_EQUAL op = COMP_NOT_EQUAL
+					op = COMP_EQUAL op = COMP_FIND op = COMP_STRICT_EQUAL op = COMP_NOT_EQUAL
 				][return 1]
 
 				if len2 > len1 [
@@ -582,12 +622,12 @@ binary: context [
 		accum: 0
 		count: 0
 		until [
-			c: string/get-char p unit
+			c: 7Fh and string/get-char p unit
 			BINARY_SKIP_COMMENT
 			if c > as-integer space [
 				c: c + 1
 				hex: as-integer table/c
-				if hex > 15 [return null]
+				if hex > 15 [return null]		;@@ release node!!!
 				accum: accum << 4 + hex
 				if count and 1 = 1 [
 					bin/value: as byte! accum
@@ -704,44 +744,115 @@ binary: context [
 		load-in src size null
 	]
 
-	;--- Actions ---
-	
-	make: func [
-		proto	[red-value!]
-		spec	[red-value!]
-		return:	[red-binary!]
+	trim-head-tail: func [
+		bin				[red-binary!]
+		head?			[logic!]
+		tail?			[logic!]
 		/local
-			bin	  [red-binary!]
+			s			[series!]
+			unit		[integer!]
+			cur			[byte-ptr!]
+			head		[byte-ptr!]
+			tail		[byte-ptr!]
 	][
-		#if debug? = yes [if verbose > 0 [print-line "binary/make"]]
+		s:    GET_BUFFER(bin)
+		head: (as byte-ptr! s/offset) + bin/head
+		tail: as byte-ptr! s/tail
+		cur: head
 
-		bin: as red-binary! string/make proto spec
-		set-type as red-value! bin TYPE_BINARY
-		bin
+		if any [head? not tail?] [
+			while [
+				all [head < tail head/value = null-byte]
+			][
+				head: head + 1
+			]
+		]
+
+		if any [tail? not head?] [
+			until [
+				tail: tail - 1
+				any [head = tail tail/value <> null-byte]
+			]
+			tail: tail + 1
+		]
+
+		if cur <> head [
+			move-memory cur head (as-integer tail - head)
+		]
+		cur: cur + (as-integer tail - head)
+		s/tail: as red-value! cur
 	]
 
+	;--- Actions ---
+
 	to: func [
-		type	[red-datatype!]
-		spec	[red-binary!]
-		return: [red-value!]
+		proto	[red-binary!]
+		spec	[red-value!]
+		type	[integer!]
+		return: [red-binary!]
 		/local
-			ret [red-value!]
+			len [integer!]
+			int [red-integer!]
+			p	[byte-ptr!]
+			p4	[int-ptr!]
+			bin [byte-ptr!]
+			bs	[red-bitset!]
+			s	[series!]
 	][
 		#if debug? = yes [if verbose > 0 [print-line "binary/to"]]
 
-		switch type/value [
-			TYPE_STRING [
-				spec/node: unicode/load-utf8
-					as c-string! binary/rs-head spec
-					binary/rs-length? spec
-				spec/header: TYPE_STRING
-				ret: as red-value! spec
+		switch TYPE_OF(spec) [
+			TYPE_ANY_STRING [
+				len: -1
+				p: as byte-ptr! unicode/to-utf8 as red-string! spec :len
+				proto: load p len
+			]
+			TYPE_INTEGER [
+				int: as red-integer! spec
+				make-at as red-value! proto 4
+				from-integer int/value proto
+			]
+			TYPE_CHAR [
+				int: as red-integer! spec
+				p: as byte-ptr! "0000"
+				len: unicode/cp-to-utf8 int/value p
+				proto: load p len
+			]
+			TYPE_FLOAT
+			TYPE_PERCENT [
+				p4: (as int-ptr! spec) + 2
+				make-at as red-value! proto 8
+				from-integer p4/2 proto
+				from-integer p4/1 proto
+			]
+			TYPE_IMAGE [
+				#either find [Windows macOS Android] OS [
+					proto: image/extract-data as red-image! spec EXTRACT_ARGB
+				][
+					proto
+				]
+			]
+			TYPE_TUPLE [
+				proto: load GET_TUPLE_ARRAY(spec) TUPLE_SIZE?(spec)
+			]
+			TYPE_ISSUE [from-issue as red-word! spec proto]
+			TYPE_ANY_LIST [
+				make-at as red-value! proto 16
+				insert proto spec null no null yes
+			]
+			TYPE_BITSET [
+				bs: as red-bitset! spec
+				s: GET_BUFFER(bs)
+				proto: load as byte-ptr! s/offset as-integer s/tail - s/offset
+			]
+			TYPE_BINARY [
+				_series/copy as red-series! spec as red-series! proto null no null
 			]
 			default [
-				fire [TO_ERROR(script bad-to-arg) type spec]
+				fire [TO_ERROR(script bad-to-arg) datatype/push TYPE_BINARY spec]
 			]
 		]
-		stack/set-last ret
+		proto
 	]
 
 	form: func [
@@ -799,8 +910,8 @@ binary: context [
 			limit	  [red-value!]
 			int		  [red-integer!]
 			char	  [red-char!]
-			sp		  [red-binary!]
-			formed	  [red-string!]
+			bin2	  [red-binary!]
+			saved	  [red-value!]
 			data	  [byte-ptr!]
 			s		  [series!]
 			s2		  [series!]
@@ -812,10 +923,9 @@ binary: context [
 			added	  [integer!]
 			bytes	  [integer!]
 			rest	  [integer!]
-			type	  [integer!]
 			tail?	  [logic!]
 	][
-		#if debug? = yes [if verbose > 0 [print-line "vector/insert"]]
+		#if debug? = yes [if verbose > 0 [print-line "binary/insert"]]
 
 		dup-n: 1
 		cnt:   1
@@ -826,15 +936,15 @@ binary: context [
 				int: as red-integer! part-arg
 				int/value
 			][
-				sp: as red-binary! part-arg
+				bin2: as red-binary! part-arg
 				src: as red-block! value
 				unless all [
-					TYPE_OF(sp) = TYPE_OF(src)
-					sp/node = src/node
+					TYPE_OF(bin2) = TYPE_OF(src)
+					bin2/node = src/node
 				][
 					ERR_INVALID_REFINEMENT_ARG(refinements/_part part-arg)
 				]
-				sp/head - src/head
+				bin2/head - src/head
 			]
 		]
 		if OPTION?(dup-arg) [
@@ -864,44 +974,32 @@ binary: context [
 			added: 0
 			len: 0
 			while [all [cell < limit added <> part]][	;-- multiple values case
-				switch TYPE_OF(cell) [
-					TYPE_CHAR [
-						char: as red-char! cell
-						data: as byte-ptr! "0000"
-						rest: unicode/cp-to-utf8 char/value data
-						added: added + 1
+				either TYPE_OF(cell) = TYPE_INTEGER [
+					int: as red-integer! cell
+					either int/value <= FFh [
+						int-value: int/value
+						data: as byte-ptr! :int-value
+						len: 1
+					][
+						fire [TO_ERROR(script out-of-range) cell]
 					]
-					TYPE_INTEGER [
-						int: as red-integer! cell
-						either int/value <= FFh [
-							int-value: int/value
-							data: as byte-ptr! :int-value
-							rest: 1
-							added: added + 1
-						][
-							fire [TO_ERROR(script out-of-range) cell]
-						]
-					]
-					default [
-						type: TYPE_OF(cell)
-						unless ANY_SERIES?(type) [
-							formed: string/rs-make-at stack/push* 16
-							actions/form cell formed null 0
-							cell: as red-value! formed
-						]
-						len: _series/get-length as red-series! cell no
-						either positive? part [			;-- /part support
-							rest: part - added
-							if rest > len [rest: len]
-							added: added + rest
-						][rest: len]
-						either TYPE_OF(cell) = TYPE_BINARY [
-							data: rs-head as red-binary! cell
-						][
-							data: as byte-ptr! unicode/to-utf8 as red-string! cell :rest
-						]
-					]
+				][
+					bin2: as red-binary! stack/push*
+					saved: stack/top
+
+					bin2: to bin2 cell TYPE_BINARY	;@@ TO will push value to stack
+					data: rs-head bin2
+					len: rs-length? bin2
+
+					stack/top: saved
 				]
+
+				either positive? part [			;-- /part support
+					rest: part - added
+					if rest > len [rest: len]
+					added: added + rest
+				][rest: len]
+
 				either tail? [
 					rs-append bin data rest
 				][
@@ -919,6 +1017,27 @@ binary: context [
 			assert (as byte-ptr! s/offset) + (bin/head << (log-b GET_UNIT(s))) <= as byte-ptr! s/tail
 		]
 		as red-value! bin
+	]
+
+	trim: func [
+		bin			[red-binary!]
+		head?		[logic!]
+		tail?		[logic!]
+		auto?		[logic!]
+		lines?		[logic!]
+		all?		[logic!]
+		with-arg	[red-value!]
+		return:		[red-series!]
+	][
+		#if debug? = yes [if verbose > 0 [print-line "binary/trim"]]
+
+		case [
+			any  [all? OPTION?(with-arg)] [string/trim-with as red-string! bin with-arg]
+			any  [auto? lines?][--NOT_IMPLEMENTED--]
+			true [trim-head-tail bin head? tail?]
+		]
+		ownership/check as red-value! bin words/_trim null bin/head 0
+		as red-series! bin
 	]
 
 	change-range: func [
@@ -1102,7 +1221,7 @@ binary: context [
 			TYPE_STRING
 			"binary!"
 			;-- General actions --
-			:make
+			INHERIT_ACTION	;make
 			INHERIT_ACTION	;random
 			null			;reflect
 			:to
@@ -1155,7 +1274,7 @@ binary: context [
 			INHERIT_ACTION	;tail
 			INHERIT_ACTION	;tail?
 			INHERIT_ACTION	;take
-			null			;trim
+			:trim
 			;-- I/O actions --
 			null			;create
 			null			;close

@@ -3,7 +3,7 @@ Red/System [
 	Author:  "Nenad Rakocevic"
 	File: 	 %red.reds
 	Tabs:	 4
-	Rights:  "Copyright (C) 2011-2015 Nenad Rakocevic. All rights reserved."
+	Rights:  "Copyright (C) 2011-2018 Red Foundation. All rights reserved."
 	License: {
 		Distributed under the Boost Software License, Version 1.0.
 		See https://github.com/red/red/blob/master/BSL-License.txt
@@ -13,13 +13,14 @@ Red/System [
 red: context [
 	;-- Runtime sub-system --
 	
+	#include %definitions.reds
 	#include %macros.reds
 	#include %tools.reds
 	
 	#switch OS [										;-- loading OS-specific bindings
 		Windows  [#include %platform/win32.reds]
 		Syllable [#include %platform/syllable.reds]
-		MacOSX	 [#include %platform/darwin.reds]
+		macOS	 [#include %platform/darwin.reds]
 		FreeBSD  [#include %platform/freebsd.reds]
 		#default [#include %platform/linux.reds]
 	]
@@ -32,6 +33,7 @@ red: context [
 	;-- Datatypes --
 	
 	#include %datatypes/structures.reds
+	#include %print.reds
 	#include %datatypes/common.reds
 	#include %unicode.reds
 	#include %case-folding.reds
@@ -49,7 +51,7 @@ red: context [
 	#switch OS [
 		Windows  [#include %platform/image-gdiplus.reds]
 		Syllable []
-		MacOSX	 []
+		macOS	 [#include %platform/image-quartz.reds]
 		FreeBSD  []
 		#default []
 	]
@@ -61,6 +63,7 @@ red: context [
 	#include %datatypes/series.reds
 	#include %datatypes/block.reds
 	#include %datatypes/string.reds
+	#include %datatypes/time.reds
 	#include %datatypes/integer.reds
 	#include %datatypes/symbol.reds
 	#include %datatypes/context.reds
@@ -96,11 +99,13 @@ red: context [
 	#include %datatypes/percent.reds
 	#include %datatypes/tuple.reds
 	#include %datatypes/binary.reds
-	#include %datatypes/time.reds
 	#include %datatypes/tag.reds
 	#include %datatypes/email.reds
+	#include %datatypes/handle.reds
+	#include %datatypes/date.reds
 	#if OS = 'Windows [#include %datatypes/image.reds]	;-- temporary
-	
+	#if OS = 'macOS   [#include %datatypes/image.reds]	;-- temporary
+
 	;-- Debugging helpers --
 	
 	#include %debug-tools.reds
@@ -113,9 +118,13 @@ red: context [
 	#include %crypto.reds
 	#include %stack.reds
 	#include %interpreter.reds
+	#include %tokenizer.reds
 	#include %simple-io.reds							;-- temporary file IO support
+	#include %clipboard.reds
 	#include %redbin.reds
 	#include %utils.reds
+	#include %call.reds
+	#include %inflate.reds
 
 	_root:	 	declare red-block!						;-- statically alloc root cell for bootstrapping
 	root:	 	as red-block! 0							;-- root block
@@ -126,7 +135,9 @@ red: context [
 	;-- Booting... --
 	
 	init: does [
+		dyn-print/init
 		platform/init
+		_random/init
 		init-mem										;@@ needs a local context
 		
 		name-table: as names! allocate 50 * size? names!	 ;-- datatype names table
@@ -177,7 +188,10 @@ red: context [
 		time/init
 		tag/init
 		email/init
+		handle/init
+		date/init
 		#if OS = 'Windows [image/init]					;-- temporary
+		#if OS = 'macOS   [image/init]					;-- temporary
 		
 		actions/init
 		
@@ -198,12 +212,12 @@ red: context [
 		issues/build									;-- create issues used internally
 		natives/init									;-- native specific init code
 		parser/init
-		_random/init
 		ownership/init
 		crypto/init
+		ext-process/init
 		
 		stack/init
-		redbin/boot-load
+		redbin/boot-load system/boot-data no
 		
 		#if debug? = yes [
 			datatype/verbose:	verbosity
@@ -246,7 +260,10 @@ red: context [
 			time/verbose:		verbosity
 			tag/verbose:		verbosity
 			email/verbose:		verbosity
+			handle/verbose:		verbosity
+			date/verbose:		verbosity
 			#if OS = 'Windows [image/verbose: verbosity]
+			#if OS = 'macOS   [image/verbose: verbosity]
 
 			actions/verbose:	verbosity
 			natives/verbose:	verbosity
@@ -254,6 +271,25 @@ red: context [
 
 			stack/verbose:		verbosity
 			unicode/verbose:	verbosity
+		]
+	]
+	
+	cleanup: does [
+		free-all										;-- Allocator's memory freeing
+		free as byte-ptr! natives/table
+		free as byte-ptr! actions/table
+		free as byte-ptr! _random/table
+		free as byte-ptr! name-table
+		free as byte-ptr! action-table
+		free as byte-ptr! cycles/stack
+		free as byte-ptr! crypto/crc32-table
+	]
+	
+	#if type = 'dll [
+		boot: does [
+			***-boot-rs
+			red/init
+			***-main
 		]
 	]
 ]

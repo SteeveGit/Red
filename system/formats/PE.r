@@ -3,31 +3,28 @@ REBOL [
 	Author:  "Nenad Rakocevic"
 	File: 	 %PE.r
 	Tabs:	 4
-	Rights:  "Copyright (C) 2011-2015 Nenad Rakocevic. All rights reserved."
+	Rights:  "Copyright (C) 2011-2018 Red Foundation. All rights reserved."
 	License: "BSD-3 - https://github.com/red/red/blob/master/BSD-3-License.txt"
 ]
 
 context [
-	manifest-template: {
-		<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
-			<dependency>
-				<dependentAssembly>
-					<assemblyIdentity type="win32" name="Microsoft.Windows.Common-Controls" version="6.0.0.0" processorArchitecture="*" publicKeyToken="6595b64144ccf1df" language="*"></assemblyIdentity>
-				</dependentAssembly>
-			</dependency>
-			<trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
-				<security>
-					<requestedPrivileges>
-						<requestedExecutionLevel level="asInvoker" uiAccess="false"></requestedExecutionLevel>
-					</requestedPrivileges>
-				</security>
-			</trustInfo>
-			<compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1">
-				<application>
-					<supportedOS Id="{4a2f28e3-53b9-4441-ba9c-d69d4a4a6e38}"></supportedOS>
-				</application>
-			</compatibility>
-		</assembly>
+	manifest-template: decompress #{
+		789C9553DD6BDB30107FEF5F21F43866CB4EE22C097621943D84AD6C90B13ECB
+		F23911B33E26C94EC3D8FF3EA9B1E3266D292360B83BDDFD3EEE7283504EAD05
+		513647F4281A690BDC1AB9B26C0F82DA4870669455B58B98122B6A45DCA5F8F4
+		3044DDF4DDE7538C0495BC06EB7E82B15CC902A771826F6F90C7AE4083AC40B2
+		E3533C26DCBA6775CA8F2C37A1C8DD11B9A386021FB89C4E309254F8E07E808F
+		1FB8ACD4C1C6774A0825A33B259D518DC5A81B38CCE324FC30D24631B05699B5
+		617BEE80B9D6F8598F8BB9AFB565C3D91738FE50BF203465CBAC9CCFD2D98CB1
+		3AAD6A8C1A2A772DDDF9860F98F41AC8EB22C67CAF367F7270E54C6BDD46D6AA
+		6FB7C05AE3150ECA0DFC6EBD7B507D37BCE30DECC0F6A567B5CF8FBECB79655F
+		A1830635E15B606A37B2F3D40D462D5FB3A0B3C0356D2C0C643DAB37E7E7E482
+		4A4E5EE39BFB4D6BEA78C99BB095776FE8E279B8A61E8B6AEDADA641C2C0CCB6
+		5A2BE3897DDBA24D55E03F0B48EA4F349D44655D4EA3590D8BA85CD22C9A2DEA
+		2A4B689AD125FD3BAEE17A644E2EC09FEFE0057A9F3F9CEE680BCE71B91B7CCF
+		2BCDD7076A6090BB774EAF08E915C767C5B10724DBFB0D992449461E2E87E15B
+		EF24102DFC61F4F3AEE74BBFB0FFC048E72F313418FF0FE04E996EF2710C46CC
+		807176EC4DD143EDCAA8903E9FF83FFC5370A94D040000
 	}
 	if all [
 		system/version/4 = 3
@@ -157,6 +154,7 @@ context [
 			data				#{C0000040}	;-- [read write initialized]
 			export				#{40000040}	;-- [read initialized]
 			import				#{C0000040}	;-- [read write initialized]
+			idata				#{C0000040}	;-- [read write initialized]
 			reloc				#{42000040} ;-- [read discardable initialized]
 			except				#{40000040}	;-- [read initialized]
 			rsrc				#{40000040}	;-- [read initialized]
@@ -312,7 +310,7 @@ context [
 		IAT-rva				[integer!]		;-- address table RVA
 	] none
 
-	ILT: make-struct [
+	ILT-struct: make-struct [
 		rva	[integer!]						;-- 32/64-bit
 	] none
 	
@@ -484,58 +482,85 @@ context [
 			]
 		]
 	]
-
+	
 	build-import: func [
 		job [object!]
-		/local spec IDTs ptr len out ILT-base buffer hints idt hint-ptr hint
+		/local spec IDTs ILTs out dlls hints idt ilt ptr ILTs-base hints-base
+			dlls-base IAT-base ILT-size idx IAT-buffer len offset list idata
 	][
 		spec:		job/sections/import
 		IDTs: 		make block! len: divide length? spec/3 2	;-- list of directory entries
-		out:		make binary! 4096					;-- final output buffer
-		buffer:		make binary! 256					;-- DLL names + ILTs + IATs + hints/names buffer
-		hints:		make binary! 2048					;-- hints/names temporary buffer
-		ptr: 		(section-addr?/memory job 'import)
-					+ (1 + len * length? form-struct import-directory)	;-- point to end of directory table
+		ILTs:		make block!  500
+		out:		make binary! 50000					;-- final output buffer
+		dlls:		make binary! 200					;-- DLL names
+		hints:		make binary! 10000					;-- hints/names temporary buffer
 
+		if pos: find spec/3 "libRedRT.dll" [
+			append spec/3 take/part pos 2				;-- ensures libRedRT is loaded last
+		]												;-- to allow VisualStyles to work properly
+		
 		foreach [name list] spec/3 [					;-- collecting DLL names in buffer
 			append IDTs idt: make-struct import-directory none
-			idt/name-rva: ptr + length? buffer
-			repend buffer [uppercase name null]
-			if even? length? name [append buffer null]
+			idt/name-rva: length? dlls
+			repend dlls [uppercase name null]
+			if even? length? name [append dlls null]
 		]
-		ptr: ptr + length? buffer						;-- base address of ILT/IAT/hints entries
-
-		idx: 1
-		foreach [name list] spec/3 [
-			IDTs/:idx/ILT-rva: ptr
-			ILT-base: tail buffer
-			clear hints
-			hint-ptr: ptr + (ILT-size * 2 * (1 + divide length? list 2))	;-- ILTs + IATs
-
+		pad4 dlls
+		
+		len: 0
+		foreach [name list] spec/3 [					;-- collecting function names in buffer
+			append/only ILTs make block! 50
+			linker/check-dup-symbols job list
 			foreach [def reloc] list [
-				hint: tail hints
-				repend hints [#{0000} def null]			;-- Ordinal is zero, not used
+				append last ILTs ilt: make-struct ILT-struct none
+				ilt/rva: length? hints
+				repend hints [#{0000} form def null]	;-- Ordinal is zero, not used
 				if even? length? def [append hints null]
-				ILT/rva: hint-ptr
-				append buffer form-struct ILT			;-- ILT instance
-				hint-ptr: hint-ptr + length? hint
-				ptr: ptr + ILT-size
+				len: len + 1
 			]
-			append buffer #{00000000}					;-- null entry (8 bytes for 64-bit)
-			ptr: ptr + ILT-size		
-
-			repend imports-refs [ptr list]				;-- save IAT base ptr for relocation
-			IDTs/:idx/IAT-rva: ptr
-			ptr: ptr + offset? ILT-base tail buffer
-			append buffer ILT-base						;-- IAT instances (copy of all ILTs)
-
-			ptr: ptr + length? hints
-			append buffer hints
-			idx: idx + 1
+			len: len + 1								;-- account for null entry
 		]
-		foreach idt IDTs [append out form-struct idt]
-		append out form-struct import-directory			;-- Null directory entry
-		change next spec append out buffer
+
+		ptr:		section-addr?/memory job 'import
+		ILTs-base:  ptr + (1 + (length? IDTs) * length? form-struct import-directory)
+		hints-base: ILTs-base + (len *  ILT-size: length? form-struct ILT-struct)
+		dlls-base:	hints-base + length? hints
+
+		idx: 0
+		offset: 0
+		foreach idt IDTs [
+			if idx > 0 [offset: offset + (ILT-size * (1 + length? ILTs/:idx))]
+			idt/ILT-rva:  ILTs-base + offset
+			idt/name-rva: idt/name-rva + dlls-base
+			append out form-struct idt
+			idx: idx + 1
+			IDTs/:idx: offset
+		]
+		append out form-struct import-directory			;-- Ending null directory entry
+		
+		IAT-buffer: tail out
+		foreach dll ILTs [
+			foreach ilt dll [
+				ilt/rva: ilt/rva + hints-base
+				append out form-struct ilt
+			]
+			append out form-struct ILT-struct			;-- Ending null ILT entry
+		]
+		IAT-buffer: copy IAT-buffer
+		repend out [hints dlls]
+		change next spec out
+	
+		idata: compose/deep [idata [- (IAT-buffer) -]]	;-- inject IAT section
+		insert skip find job/sections 'import 2 idata
+		
+		ptr: section-addr?/memory job 'idata
+		idx: 1		
+		foreach offset IDTs [
+			change skip out (idx * 20) - 4 to-bin32 IAT-base: ptr + offset
+			list: pick spec/3 idx * 2
+			repend imports-refs [IAT-base list]			;-- save IAT base ptr for relocation
+			idx: idx + 1
+		]	
 	]
 	
 	build-export: func [
@@ -553,10 +578,10 @@ context [
 						+ length? form-struct export-directory
 		
 		sym-nb: 0
-		sort spec/3										;-- sort all symbols lexicographically
-		foreach name spec/3 [							;-- Export Name Table
+		sort/case/skip/compare spec/3 2 2				;-- sort all symbols lexicographically
+		foreach [name exp-name] spec/3 [				;-- Export Name Table
 			repend NPT [name length? names]
-			repend names [name null]
+			repend names [exp-name null]
 			sym-nb: sym-nb + 1
 		]
 		
@@ -610,7 +635,7 @@ context [
 	
 	build-section-reloc: func [
 		job [object!] name [word!] refs [block!]
-		/local _4K block buffer base type offset header open-block close-block
+		/local _4K block buffer base type offset factor header open-block close-block
 	][
 		_4K: 4096
 		buffer: make binary! _4K
@@ -630,12 +655,13 @@ context [
 		do open-block
 		foreach offset refs [
 			offset: offset - 1
-			if offset - block > _4K [
+			if offset - block >= _4K [
 				pad4 buffer
 				do close-block
 				do open-block
-				base: base + _4K
-				block: block + _4K
+				factor: offset - block / _4K
+				base: base + factor: (_4K * to integer! factor)
+				block: block + factor
 			]
 			append buffer to-bin16 (offset - block) or type
 		]
@@ -656,8 +682,8 @@ context [
 				foreach ref spec/3 [append code-refs ref]
 			]
 		]
-		sort code-refs
-		sort data-refs
+		code-refs: unique sort code-refs
+		data-refs: unique sort data-refs
 			
 		unless empty? code-refs [append out build-section-reloc job 'code code-refs]
 		unless empty? data-refs [append out build-section-reloc job 'data data-refs]
@@ -703,13 +729,10 @@ context [
 		code-page: ep-mem-page
 		code-base: code-page * memory-align
 		
-		flags: to integer! defs/dll-flags/nx-compat
-		case/all [
-			job/type = 'dll	[flags: flags or to integer! defs/dll-flags/dynamic-base]
-			job/type = 'drv [flags: flags or to integer! defs/dll-flags/wdm-driver]
-		]
+		flags: (to integer! defs/dll-flags/nx-compat)
+			 or to integer! defs/dll-flags/dynamic-base
 		
-		if job/type = 'drv [flags: 0]						;@@temporary flags disabling
+		if job/type = 'drv [flags: flags or to integer! defs/dll-flags/wdm-driver]
 		
 		ep: switch/default job/type [
 			dll [
@@ -759,6 +782,9 @@ context [
 		;-- data directory
 		oh/import-addr:			named-sect-addr? job 'import
 		oh/import-size:			length? job/sections/import/2
+		oh/IAT-addr:			named-sect-addr? job 'idata
+		oh/IAT-size:			length? job/sections/idata/2
+		
 		if job/type = 'dll [
 			oh/export-addr:		named-sect-addr? job 'export
 			oh/export-size:		length? job/sections/export/2
@@ -785,9 +811,16 @@ context [
 		sh/line-num-ptr:	0
 		sh/relocations-nb:	0							;-- @@ relevant only for OBJ files
 		sh/line-num-nb:		0
-		sh/flags:			to integer! select defs/s-type name		
-
-		change s: form-struct sh append uppercase form name null	
+		sh/flags:			to integer! select defs/s-type name
+		
+		name: select [
+			code	".text"
+			data  	".data"
+			import	".rdata"
+			rsrc	".rsrc"
+			idata	".idata"
+		] name
+		change s: form-struct sh append form name null
 		change spec s	
 	]
 
@@ -1050,8 +1083,7 @@ context [
 		entry/offset: base + length? buf
 		data-buf: tail buf
 
-		append buf trim/with either info [info][manifest-template] "^/^-"
-		pad4 buf
+		append buf trim/with either info [info][manifest-template] "^M^/^-"
 
 		entry/size: length? data-buf
 		append out form-struct entry
@@ -1121,7 +1153,15 @@ context [
 		resolve-import-refs job							;-- resolve DLL imports references
 		resolve-data-refs job							;-- resolve data references
 
-		foreach [name spec] job/sections [
+		linker/set-image-info
+			job
+			base-address
+			(section-addr?/memory job 'code) - base-address
+			length? job/sections/code/2
+			(section-addr?/memory job 'data) - base-address
+			length? job/sections/data/2
+
+		foreach [name spec] job/sections [		
 			pad: pad-size? spec/2
 			append job/buffer spec/2
 			insert/dup tail job/buffer null pad

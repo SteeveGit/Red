@@ -3,7 +3,7 @@ Red/System [
 	Author:  "Nenad Rakocevic"
 	File: 	 %point.reds
 	Tabs:	 4
-	Rights:  "Copyright (C) 2011-2015 Nenad Rakocevic. All rights reserved."
+	Rights:  "Copyright (C) 2011-2018 Red Foundation. All rights reserved."
 	License: {
 		Distributed under the Boost Software License, Version 1.0.
 		See https://github.com/red/red/blob/master/BSL-License.txt
@@ -16,9 +16,10 @@ point: context [
 	;-- Actions --
 	
 	make: func [
-		proto	 [red-value!]
-		spec	 [red-value!]
-		return:	 [red-point!]
+		proto	[red-value!]
+		spec	[red-value!]
+		type	[integer!]
+		return:	[red-point!]
 	][
 		#if debug? = yes [if verbose > 0 [print-line "point/make"]]
 

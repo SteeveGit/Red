@@ -3,7 +3,7 @@ Red/System [
 	Author:  "Nenad Rakocevic"
 	File: 	 %time.reds
 	Tabs:	 4
-	Rights:  "Copyright (C) 2016 Nenad Rakocevic. All rights reserved."
+	Rights:  "Copyright (C) 2016-2018 Red Foundation. All rights reserved."
 	License: {
 		Distributed under the Boost Software License, Version 1.0.
 		See https://github.com/red/red/blob/master/red-system/runtime/BSL-License.txt
@@ -12,16 +12,29 @@ Red/System [
 
 time: context [
 	verbose: 0
-	
-	nano:  1E-9
-	oneE9: 1E9
-	h-factor: 3600.0 * oneE9
-	m-factor: 60.0 * oneE9
-	
+
+	h-factor: 3600.0
+	m-factor: 60.0
+
 	#define GET_HOURS(time)   (floor time / h-factor)
-	#define GET_MINUTES(time) (floor time / oneE9 // 3600.0 / 60.0)
-	#define GET_SECONDS(time) (time / oneE9 // 60.0)
-	
+	#define GET_MINUTES(time) (floor time // 3600.0 / 60.0)
+	#define GET_SECONDS(time) (time // 60.0)
+
+	throw-error: func [spec [red-value!]][
+		fire [TO_ERROR(script bad-to-arg) datatype/push TYPE_TIME spec]
+	]
+
+	get-hours: func [tm [float!] return: [integer!]][
+		tm: tm / h-factor
+		tm: either tm < 0.0 [ceil tm][floor tm]
+		as-integer tm
+	]
+
+	get-minutes: func [tm [float!] return: [integer!]][
+		if tm < 0.0 [tm: 0.0 - tm]
+		as-integer floor tm // 3600.0 / 60.0
+	]
+
 	push-field: func [
 		tm		[red-time!]
 		field	[integer!]
@@ -31,8 +44,8 @@ time: context [
 	][
 		t: tm/time
 		as red-value! switch field [
-			1 [integer/push as-integer GET_HOURS(t)]
-			2 [integer/push as-integer GET_MINUTES(t)]
+			1 [integer/push time/get-hours t]
+			2 [integer/push time/get-minutes t]
 			3 [float/push GET_SECONDS(t)]
 			default [assert false]
 		]
@@ -46,7 +59,7 @@ time: context [
 		/local
 			cell [cell!]
 	][
-		#if debug? = yes [if verbose > 0 [print-line "float/make-in"]]
+		#if debug? = yes [if verbose > 0 [print-line "time/make-in"]]
 
 		cell: ALLOC_TAIL(parent)
 		cell/header: TYPE_TIME
@@ -84,75 +97,20 @@ time: context [
 		make-at time stack/push*
 	]
 	
-	;-- Actions --
-	
-	make: func [
-		proto	 [red-value!]
-		spec	 [red-value!]
-		return:	 [red-time!]
-		/local
-			int	 [red-integer!]
-			fl	 [red-float!]
-	][
-		#if debug? = yes [if verbose > 0 [print-line "time/make"]]
-
-		switch TYPE_OF(spec) [
-			TYPE_INTEGER [
-				fl: as red-float! spec
-				int: as red-integer! spec
-				fl/value: oneE9 * as-float int/value
-				fl/header: TYPE_TIME
-				as red-time! fl
-			]
-			TYPE_FLOAT [
-				fl: as red-float! spec
-				fl/header: TYPE_TIME
-				fl/value: oneE9 * fl/value
-				as red-time! fl
-			]
-			default [
-				--NOT_IMPLEMENTED--
-				as red-float! spec					;@@ just for making it compilable
-			]
-		]
-	]
-
-	
-	form: func [
-		t		[red-time!]
+	serialize: func [
+		time 	[float!]
 		buffer	[red-string!]
-		arg		[red-value!]
 		part 	[integer!]
-		return: [integer!]
-	][
-		#if debug? = yes [if verbose > 0 [print-line "time/form"]]
-
-		mold t buffer no no no arg part 0
-	]
-	
-	mold: func [
-		t		[red-time!]
-		buffer	[red-string!]
-		only?	[logic!]
-		all?	[logic!]
-		flat?	[logic!]
-		arg		[red-value!]
-		part 	[integer!]
-		indent	[integer!]
 		return: [integer!]
 		/local
 			formed [c-string!]
-			time   [float!]
 			len	   [integer!]
 	][
-		#if debug? = yes [if verbose > 0 [print-line "time/mold"]]
-		
-		time: t/time
 		if time < 0.0 [
 			string/append-char GET_BUFFER(buffer) as-integer #"-"
 			time: float/abs time
 		]
-		
+
 		formed: integer/form-signed as-integer GET_HOURS(time)
 		string/concatenate-literal buffer formed
 		part: part - length? formed						;@@ optimize by removing length?
@@ -167,10 +125,11 @@ time: context [
 		]
 		string/concatenate-literal buffer formed
 		part: part - 1 - len
-		
+
 		string/append-char GET_BUFFER(buffer) as-integer #":"
-		
-		formed: float/form-float GET_SECONDS(time) float/FORM_TIME
+
+		time: GET_SECONDS(time)
+		formed: either time < 1E-6 ["00"][float/form-float time float/FORM_TIME]
 		len: length? formed								;@@ optimize by removing length?
 		if any [len = 1 formed/2 = #"."][
 			string/append-char GET_BUFFER(buffer) as-integer #"0"
@@ -178,6 +137,107 @@ time: context [
 		]
 		string/concatenate-literal buffer formed
 		part - 1 - len
+	]
+	
+	;-- Actions --
+	
+	;make: :to
+
+	to: func [
+		proto 	[red-value!]							;-- overwrite this slot with result
+		spec	[red-value!]
+		type	[integer!]
+		return: [red-value!]
+		/local
+			tm	 [red-time!]
+			int  [red-integer!]
+			fl	 [red-float!]
+			str	 [red-string!]
+			blk	 [red-block!]
+			len	 [integer!]
+			i	 [integer!]
+			t	 [float!]
+			val  [red-value!]
+	][
+		#if debug? = yes [if verbose > 0 [print-line "time/to"]]
+		
+		if TYPE_OF(spec) = TYPE_TIME [return spec]
+		
+		tm: as red-time! proto
+		tm/header: TYPE_TIME
+		
+		switch TYPE_OF(spec) [
+			TYPE_INTEGER [
+				int: as red-integer! spec
+				tm/time: as-float int/value
+			]
+			TYPE_FLOAT
+			TYPE_PERCENT [
+				fl: as red-float! spec
+				tm/time: fl/value
+			]
+			TYPE_ANY_LIST [
+				blk: as red-block! spec
+				len: block/rs-length? blk
+				if len > 3 [throw-error spec]
+				int: as red-integer! block/rs-head blk
+				fl: null
+				t: 0.0
+				i: 1
+				loop len [
+					either all [i = 3 TYPE_OF(int) = TYPE_FLOAT][
+						fl: as red-float! int 
+					][
+						if TYPE_OF(int) <> TYPE_INTEGER [throw-error spec]
+					]
+					t: switch i [
+						1 [t + ((as-float int/value) * 3600.0)]
+						2 [t + ((as-float int/value) * 60.0)]
+						3 [either fl = null [t +  as-float int/value][t + fl/value]]
+					]
+					int: int + 1
+					i: i + 1
+				]
+				tm/time: t
+			]
+			TYPE_ANY_STRING [
+				i: 0
+				val: as red-value! :i
+				copy-cell spec val					;-- save spec, load-value will change it
+				proto: load-value as red-string! spec
+				if TYPE_OF(proto) <> TYPE_TIME [throw-error val]
+			]
+			default [throw-error spec]
+		]
+		proto
+	]
+	
+	form: func [
+		t		[red-time!]
+		buffer	[red-string!]
+		arg		[red-value!]
+		part 	[integer!]
+		return: [integer!]
+	][
+		#if debug? = yes [if verbose > 0 [print-line "time/form"]]
+
+		serialize t/time buffer part
+	]
+	
+	mold: func [
+		t		[red-time!]
+		buffer	[red-string!]
+		only?	[logic!]
+		all?	[logic!]
+		flat?	[logic!]
+		arg		[red-value!]
+		part 	[integer!]
+		indent	[integer!]
+		return: [integer!]
+	][
+		#if debug? = yes [if verbose > 0 [print-line "time/mold"]]
+		
+		serialize t/time buffer part
 	]
 	
 	eval-path: func [
@@ -244,7 +304,7 @@ time: context [
 						]
 						default [fire [TO_ERROR(script invalid-arg) value]]
 					]
-					t/time: time - (GET_SECONDS(time) - fval * oneE9)
+					t/time: time - (GET_SECONDS(time) - fval)
 				]
 				default [assert false]
 			]
@@ -255,7 +315,41 @@ time: context [
 			value
 		]
 	]
-	
+
+	add: func [
+		return:	[red-value!]
+		/local
+			left	[red-time!]
+			right	[red-time!]
+			val		[float!]
+	][
+		#if debug? = yes [if verbose > 0 [print-line "time/add"]]
+		right: as red-time! stack/arguments + 1
+		either TYPE_OF(right) = TYPE_DATE [
+			left: right - 1								;-- swap them!
+			val: left/time
+			copy-cell as red-value! right as red-value! left
+			right/header: TYPE_TIME
+			right/time: val
+			as red-value! date/do-math OP_ADD
+		][
+			as red-value! float/do-math OP_ADD
+		]
+	]
+
+	subtract: func [
+		return:	[red-value!]
+		/local
+			slot [red-value!]
+	][
+		#if debug? = yes [if verbose > 0 [print-line "time/subtract"]]
+		slot: stack/arguments + 1
+		if TYPE_OF(slot) = TYPE_DATE [
+			fire [TO_ERROR(script not-related) words/_subtract datatype/push TYPE_TIME]
+		]
+		as red-value! float/do-math OP_SUB
+	]
+
 	divide: func [
 		return: [red-value!]
 		/local
@@ -283,6 +377,28 @@ time: context [
 		as red-value! float/do-math OP_MUL
 	]
 	
+	even?: func [
+		tm		[red-time!]
+		return: [logic!]
+		/local
+			t [float!]
+	][
+		t: tm/time
+		either t >= 0.0 [t: t + 1E-6][t: t - 1E-6]		;@@ 1E-6 is a temporary, empirical workaround
+		not as-logic (as integer! GET_SECONDS(t)) and 1
+	]
+
+	odd?: func [
+		tm		[red-time!]
+		return: [logic!]
+		/local
+			t [float!]
+	][
+		t: tm/time
+		either t >= 0.0 [t: t + 1E-6][t: t - 1E-6]		;@@ 1E-6 is a temporary, empirical workaround
+		as-logic (as integer! GET_SECONDS(t)) and 1
+	]
+
 	round: func [
 		tm			[red-time!]
 		scale		[red-float!]
@@ -294,9 +410,7 @@ time: context [
 		half-ceil?	[logic!]
 		return:		[red-value!]
 	][
-		tm/time: tm/time * nano
 		float/round as red-value! tm scale _even? down? half-down? floor? ceil? half-ceil?
-		tm/time: tm/time * oneE9
 		as red-value! tm
 	]
 	
@@ -308,20 +422,20 @@ time: context [
 	][
 		#if debug? = yes [if verbose > 0 [print-line "time/pick"]]
 
-		if all [index < 1 index > 3][fire [TO_ERROR(script out-of-range) boxed]]
+		if any [index < 1 index > 3][fire [TO_ERROR(script out-of-range) boxed]]
 		push-field tm index
 	]
-	
+
 	init: does [
 		datatype/register [
 			TYPE_TIME
 			TYPE_FLOAT
 			"time!"
 			;-- General actions --
-			:make
+			:to				;make
 			INHERIT_ACTION	;random
 			null			;reflect
-			null			;to
+			:to
 			:form
 			:mold
 			:eval-path
@@ -329,16 +443,16 @@ time: context [
 			INHERIT_ACTION	;compare
 			;-- Scalar actions --
 			INHERIT_ACTION	;absolute
-			INHERIT_ACTION	;add
+			:add
 			:divide
 			:multiply
 			INHERIT_ACTION	;negate
 			null			;power
 			INHERIT_ACTION	;remainder
 			:round
-			INHERIT_ACTION	;subtract
-			null			;even?
-			null			;odd?
+			:subtract
+			:even?
+			:odd?
 			;-- Bitwise actions --
 			null			;and~
 			null			;complement

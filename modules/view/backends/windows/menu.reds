@@ -3,7 +3,7 @@ Red/System [
 	Author: "Nenad Rakocevic"
 	File: 	%menu.reds
 	Tabs: 	4
-	Rights: "Copyright (C) 2015 Nenad Rakocevic. All rights reserved."
+	Rights: "Copyright (C) 2015-2018 Red Foundation. All rights reserved."
 	License: {
 		Distributed under the Boost Software License, Version 1.0.
 		See https://github.com/red/red/blob/master/BSL-License.txt
@@ -130,13 +130,13 @@ show-context-menu: func [
 		if menu-bar? spec symbol/resolve w/symbol [
 			return no
 		]
-		hWnd: GetParent msg/hWnd
+		hWnd: GetParent msg/hWnd			;@@ why use parent?
 		if null? hWnd [hWnd: msg/hWnd]
 		menu-origin: msg/hWnd
 
 		hMenu: build-menu spec CreatePopupMenu
 		menu-ctx: hMenu
-		TrackPopupMenuEx hMenu 0 x y GetParent msg/hWnd null
+		TrackPopupMenuEx hMenu 0 x y hWnd null
 		return yes
 	]
 	no

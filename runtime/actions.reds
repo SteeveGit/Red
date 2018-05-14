@@ -3,7 +3,7 @@ Red/System [
 	Author:  "Nenad Rakocevic"
 	File: 	 %actions.reds
 	Tabs:	 4
-	Rights:  "Copyright (C) 2011-2015 Nenad Rakocevic. All rights reserved."
+	Rights:  "Copyright (C) 2011-2018 Red Foundation. All rights reserved."
 	License: {
 		Distributed under the Boost Software License, Version 1.0.
 		See https://github.com/red/red/blob/master/BSL-License.txt
@@ -13,7 +13,7 @@ Red/System [
 actions: context [
 	verbose: 0
 	
-	table: declare int-ptr!
+	table: as int-ptr! 0
 	
 	register: func [
 		[variadic]
@@ -112,7 +112,7 @@ actions: context [
 	;--- Actions polymorphic calls ---
 
 	make*: func [
-		return:	 [red-value!]
+		return:	[red-value!]
 	][
 		stack/set-last make stack/arguments stack/arguments + 1
 	]
@@ -137,10 +137,11 @@ actions: context [
 		action-make: as function! [
 			proto 	 [red-value!]
 			spec	 [red-value!]
+			type	 [integer!]
 			return:	 [red-value!]						;-- newly created value
 		] get-action-ptr-from type ACT_MAKE
 		
-		action-make proto spec
+		action-make proto spec type
 	]
 
 	random*: func [
@@ -203,26 +204,36 @@ actions: context [
 	to*: func [
 		return: [red-value!]
 	][
-		to as red-datatype! stack/arguments stack/arguments + 1
+		stack/set-last to stack/arguments stack/arguments + 1
 	]
 
 	to: func [
-		type	[red-datatype!]
-		spec	[red-value!]
-		return: [red-value!]
+		proto 	 [red-value!]
+		spec	 [red-value!]
+		return:	 [red-value!]
 		/local
+			dt	 [red-datatype!]
+			type [integer!]
 			action-to
 	][
-		if TYPE_OF(spec) = type/value [return stack/set-last spec]
+		#if debug? = yes [if verbose > 0 [print-line "actions/to"]]
+
+		type: TYPE_OF(proto)
+		if type = TYPE_DATATYPE [
+			dt: as red-datatype! proto
+			type: dt/value
+		]
 
 		action-to: as function! [
-			type	[red-datatype!]
-			spec	[red-value!]
-			return: [red-value!]
-		] get-action-ptr-from TYPE_OF(spec) ACT_TO
+			proto 	 [red-value!]
+			spec	 [red-value!]
+			type	 [integer!]
+			return:	 [red-value!]						;-- newly created value
+		] get-action-ptr-from type ACT_TO
 
-		action-to type spec
+		action-to proto spec type
 	]
+
 
 	form*: func [
 		part	   [integer!]
@@ -416,19 +427,23 @@ actions: context [
 			op <> COMP_EQUAL
 			op <> COMP_SAME
 			op <> COMP_STRICT_EQUAL
+			op <> COMP_STRICT_EQUAL_WORD
 			op <> COMP_NOT_EQUAL
+			op <> COMP_FIND
 		][
 			fire [TO_ERROR(script invalid-compare) value1 value2]
 		]
 		switch op [
 			COMP_EQUAL
+			COMP_FIND
 			COMP_SAME
-			COMP_STRICT_EQUAL 	[res: value =  0]
-			COMP_NOT_EQUAL 		[res: value <> 0]
-			COMP_LESSER			[res: value <  0]
-			COMP_LESSER_EQUAL	[res: value <= 0]
-			COMP_GREATER		[res: value >  0]
-			COMP_GREATER_EQUAL	[res: value >= 0]
+			COMP_STRICT_EQUAL
+			COMP_STRICT_EQUAL_WORD	[res: value =  0]
+			COMP_NOT_EQUAL 			[res: value <> 0]
+			COMP_LESSER				[res: value <  0]
+			COMP_LESSER_EQUAL		[res: value <= 0]
+			COMP_GREATER			[res: value >  0]
+			COMP_GREATER_EQUAL		[res: value >= 0]
 		]
 		res
 	]
@@ -1544,10 +1559,51 @@ actions: context [
 
 	create*: func [][]
 	close*: func [][]
-	delete*: func [][]
+	
+	delete*: func [
+		return:	[red-value!]
+	][
+		stack/set-last delete stack/arguments
+	]
+	
+	delete: func [
+		file	[red-value!]
+		return: [red-value!]
+		/local
+			action-delete
+	][
+		#if debug? = yes [if verbose > 0 [print-line "actions/delete"]]
+
+		action-delete: as function! [
+			file	[red-value!]
+			return: [red-value!]
+		] get-action-ptr file ACT_DELETE
+
+		action-delete file
+	]
+	
 	open*: func [][]
 	open?*: func [][]
-	query*: func [][]
+
+	query*: func [][
+		stack/set-last query stack/arguments
+	]
+
+	query: func [
+		target  [red-value!]
+		return:	[red-value!]
+		/local
+			action-query
+	][
+		#if debug? = yes [if verbose > 0 [print-line "actions/query"]]
+
+		action-query: as function! [
+			target  [red-value!]
+			return:	[red-value!]						;-- picked value from series
+		] get-action-ptr target ACT_QUERY
+
+		action-query target
+	]
 
 	read*: func [
 		part	[integer!]
@@ -1720,11 +1776,11 @@ actions: context [
 			;-- I/O actions --
 			null			;create
 			null			;close
-			null			;delete
+			:delete*
 			:modify*
 			null			;open
 			null			;open?
-			null			;query
+			:query*
 			:read*
 			null			;rename
 			null			;update

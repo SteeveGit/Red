@@ -3,7 +3,7 @@ Red [
 	Author:  "Nenad Rakocevic"
 	File: 	 %datatypes.red
 	Tabs:	 4
-	Rights:  "Copyright (C) 2011-2015 Nenad Rakocevic. All rights reserved."
+	Rights:  "Copyright (C) 2011-2018 Red Foundation. All rights reserved."
 	License: {
 		Distributed under the Boost Software License, Version 1.0.
 		See https://github.com/red/red/blob/master/BSL-License.txt
@@ -54,11 +54,16 @@ hash!:			make datatype! #get-definition TYPE_HASH
 pair!:			make datatype! #get-definition TYPE_PAIR
 percent!:		make datatype! #get-definition TYPE_PERCENT
 tuple!:			make datatype! #get-definition TYPE_TUPLE
-event!:			make datatype! #get-definition TYPE_EVENT
 image!:			make datatype! #get-definition TYPE_IMAGE
 time!:			make datatype! #get-definition TYPE_TIME
 tag!:			make datatype! #get-definition TYPE_TAG
 email!:			make datatype! #get-definition TYPE_EMAIL
+handle!:		make datatype! #get-definition TYPE_HANDLE
+date!:			make datatype! #get-definition TYPE_DATE
+
+#if find config/modules 'view [
+	event!: make datatype! #get-definition TYPE_EVENT
+]
 
 none:  			make none! 0
 true:  			make logic! 1

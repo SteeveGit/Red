@@ -3,7 +3,7 @@ Red [
 	Author:  "Nenad Rakocevic"
 	File: 	 %system.red
 	Tabs:	 4
-	Rights:  "Copyright (C) 2011-2015 Nenad Rakocevic. All rights reserved."
+	Rights:  "Copyright (C) 2011-2018 Red Foundation. All rights reserved."
 	License: {
 		Distributed under the Boost Software License, Version 1.0.
 		See https://github.com/red/red/blob/master/BSL-License.txt
@@ -12,7 +12,11 @@ Red [
 
 system: context [
 	version: #version
-	build:	 #build-date
+	build: context [
+		date: to-local-date #build-date
+		git: do #git
+		config: context #build-config
+	]
 		
 	words: #system [
 		__make-sys-object: func [
@@ -31,22 +35,38 @@ system: context [
 		]
 		__make-sys-object
 	]
-	
+
 	platform: func ["Return a word identifying the operating system"][
 		#system [
 			#switch OS [
 				Windows  [SET_RETURN(words/_windows)]
 				Syllable [SET_RETURN(words/_syllable)]
-				MacOSX	 [SET_RETURN(words/_macosx)]
+				macOS	 [SET_RETURN(words/_macOS)]
 				#default [SET_RETURN(words/_linux)]
 			]
 		]
 	]
-	
+
 	catalog: context [
 		datatypes:
 		actions:
 		natives: none
+		
+		accessors: [
+			date!	[
+				date year month day zone time hour minute second weekday yearday
+				timezone week isoweek julian
+			]
+			email!	[user host]
+			event!	[
+				type face window offset key picked flags away? down? mid-down?
+				alt-down? aux-down? ctrl? shift?
+			]
+			image!	[size argb rgb alpha]
+			pair!	[x y]
+			;point!	[x y z]
+			time!	[hour minute second]
+		]
 		
 		errors: context [
 			throw: object [
@@ -56,6 +76,7 @@ system: context [
 				return:				"return or exit not in function"
 				throw:				["no catch for throw:" :arg1]
 				continue:			"no loop to continue"
+				while-cond:			"BREAK/CONTINUE cannot be used in WHILE condition block"
 			]
 			note: object [
 				code:				100
@@ -79,7 +100,7 @@ system: context [
 				no-value:			[:arg1 "has no value"]
 				need-value:			[:arg1 "needs a value"]
 				not-defined:		[:arg1 "word is not bound to a context"]
-				not-in-context:		[:arg1 "is not in the specified context"]
+				not-in-context:		["context for" :arg1 "is not available"]
 				no-arg:				[:arg1 "is missing its" :arg2 "argument"]
 				expect-arg:			[:arg1 "does not allow" :arg2 "for its" :arg3 "argument"]
 				expect-val:			["expected" :arg1 "not" :arg2]
@@ -94,6 +115,7 @@ system: context [
 				invalid-data:		["data not in correct format:" :arg1]
 				invalid-part:		["invalid /part count:" :arg1]
 				not-same-type:		"values must be of the same type"
+				not-same-class:		["cannot coerce" :arg1 "to" :arg2]
 				not-related:		["incompatible argument for" :arg1 "of" :arg2]
 				bad-func-def:		["invalid function definition:" :arg1]
 				bad-func-arg:		["function argument" :arg1 "is not valid"]
@@ -126,10 +148,14 @@ system: context [
 				;self-protected:	"cannot set/unset self - it is protected"
 				bad-bad:			[:arg1 "error:" :arg2]
 				bad-make-arg:		["cannot MAKE" :arg1 "from:" :arg2]
-                bad-to-arg:         ["TO cannot convert" :arg1 "from:" :arg2]
+				bad-to-arg:			["cannot MAKE/TO" :arg1 "from:" :arg2]
+				invalid-months:		"invalid system/locale/month list"
 				invalid-spec-field: ["invalid" :arg1 "field in spec block"]
 				missing-spec-field: [:arg1 "not found in spec block"]
 				move-bad:			["Cannot MOVE elements from" :arg1 "to" :arg2]
+				too-long:			"Content too long"
+				invalid-char:		["Invalid char! value:" :arg1]
+				bad-loop-series:	["Loop series changed to invalid value:" :arg1]
 				;bad-decode:		"missing or unsupported encoding marker"
 				;already-used:		["alias word is already in use:" :arg1]
 				;wrong-denom:		[:arg1 "not same denomination as" :arg2]
@@ -155,11 +181,14 @@ system: context [
 				not-event-type:		["VIEW - not a valid event type" :arg1]
 				invalid-facet-type:	["VIEW - invalid rate value:" :arg1]
 				vid-invalid-syntax:	["VID - invalid syntax at:" :arg1]
+				rtd-invalid-syntax: ["RTD - invalid syntax at:" :arg1]
+				rtd-no-match:		["RTD - opening/closing tag not matching for:" :arg1]
 				react-bad-func:		"REACT - /LINK option requires a function! as argument"
 				react-not-enough:	"REACT - reactive functions must accept at least 2 arguments"
 				react-no-match:		"REACT - objects block length must match reaction function arg count"
 				react-bad-obj:		"REACT - target can only contain object values"
 				react-gctx:			["REACT - word" :arg1 "is not a reactor's field"]
+				lib-invalid-arg:	["LIBRED - invalid argument for" :arg1]
 			]
 			math: object [
 				code:				400
@@ -218,6 +247,7 @@ system: context [
 				bad-path:			["bad path:" arg1]
 				not-here:			[arg1 "not supported on your system"]
 				no-memory:			"not enough memory"
+				wrong-mem:			"failed to release memory"
 				stack-overflow:		"stack overflow"
 				;bad-series:		"invalid series"
 				;limit-hit:			["internal limit reached:" :arg1]
@@ -225,8 +255,9 @@ system: context [
 				too-deep:			"block or paren series is too deep to display"
 				feature-na:			"feature not available"
 				not-done:			"reserved for future use (or not yet implemented)"
-				invalid-error:		"error object or fields were not valid"
-				routines:			"routines require compilation, from OS shell: `red -c <script.red>`"
+				invalid-error:		["invalid error object field value:" :arg1]
+				routines:			"routines require compilation, from OS shell: `red -r <script.red>`"
+				red-system:			"contains Red/System code which requires compilation"
 			]
 		]
 
@@ -234,15 +265,15 @@ system: context [
 	
 	state: context [
 		interpreted?: func ["Return TRUE if called from the interpreter"][
-			#system [logic/box stack/eval? null]
+			#system [logic/box stack/eval? null no]
 		]
 		
 		last-error: none
-		trace?: yes
+		trace: 1										;-- 0: disabled
 	]
 	
 	modules: make block! 8
-	codecs:  make map! 8
+	codecs:  make block! 8
 	schemes: context []
 	ports:	 context []
 	
@@ -270,9 +301,11 @@ system: context [
 	options: context [
 		boot: 			none
 		home: 			none
-		path: 			what-dir
+		path: 			to-red-file get-current-dir
 		script: 		none
-		args: 			#system [stack/push get-cmdline-args]
+		cache:			none
+		thru-cache:		none
+		args: 			none
 		do-arg: 		none
 		debug: 			none
 		secure: 		none
@@ -327,7 +360,10 @@ system: context [
 	]
 	
 	script: context [
-		title: header: parent: path: args: none
+		title: header: parent: path: none
+		args: #system [
+			#either type = 'exe [stack/push get-cmdline-args][none/push]
+		]
 	]
 	
 	standard: context [
@@ -336,6 +372,9 @@ system: context [
 		]
 		error: context [
 			code: type: id: arg1: arg2: arg3: near: where: stack: none
+		]
+		file-info: context [
+			name: size: date: type: none
 		]
 	]
 	

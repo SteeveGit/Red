@@ -38,7 +38,7 @@ qt: make object! [
   version: system/script/header/version
   
   ;; switch for binary compiler usage
-  binary?: false
+  binary-compiler?: false
 
   ;; check if call-show? is enabled for call
   either any [
@@ -201,7 +201,7 @@ qt: make object! [
     parse read src red?-rule
  
     ;; compose and write compilation script
-    either binary? [
+    either binary-compiler? [
     	if #"/" <> first src [src: tests-dir/:src]     ;; relative path supplied
     	either lib [
     		cmd: join "" [to-local-file bin-compiler " -o " 
@@ -225,6 +225,7 @@ qt: make object! [
     	  do/args (reduce base-dir/red.r) (join " -o " [
     	  	  	  reduce runnable-dir/:exe " ###lib###***src***" 
     	  ])
+    	  echo none
     	]
     	either lib [
     		replace comp "###lib###" join "-dlib -t " [target " "]
@@ -356,7 +357,7 @@ qt: make object! [
     ;;exec: join "" compose/deep [(exec either args [join " " parms] [""])]
     clear output
     do call* exec output
-    if all [red? windows-os?] [output: qt/utf-16le-to-utf-8 output]
+    ;;if all [red? windows-os?] [output: qt/utf-16le-to-utf-8 output]
     recycle
     if all [
       source-file?
@@ -672,6 +673,8 @@ qt: make object! [
   	  /local
   	  	f
   ][
+  	foreach file read runnable-dir [attempt [delete runnable-dir/:file]]
+  	
   	f: to string! now/time/precise
   	f: replace/all f ":" ""
   	f: replace/all f "." ""

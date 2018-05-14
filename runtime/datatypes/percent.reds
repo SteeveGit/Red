@@ -3,7 +3,7 @@ Red/System [
 	Author:  "Qingtian Xie"
 	File: 	 %percent.reds
 	Tabs:	 4
-	Rights:  "Copyright (C) 2011-2015 Nenad Rakocevic. All rights reserved."
+	Rights:  "Copyright (C) 2011-2018 Red Foundation. All rights reserved."
 	License: {
 		Distributed under the Boost Software License, Version 1.0.
 		See https://github.com/red/red/blob/master/BSL-License.txt
@@ -96,38 +96,7 @@ percent: context [
 		fl
 	]
 
-	make: func [
-		proto	 [red-value!]	
-		spec	 [red-value!]
-		return:	 [red-float!]
-		/local
-			int	 [red-integer!]
-			fl	 [red-float!]
-	][
-		#if debug? = yes [if verbose > 0 [print-line "percent/make"]]
-
-		switch TYPE_OF(spec) [
-			TYPE_PERCENT [
-				as red-float! spec
-			]
-			TYPE_INTEGER [
-				fl: as red-float! spec
-				int: as red-integer! spec
-				fl/value: as-float int/value
-				fl/header: TYPE_PERCENT
-				fl
-			]
-			TYPE_FLOAT [
-				fl: as red-float! spec
-				fl/header: TYPE_PERCENT
-				fl
-			]
-			default [
-				--NOT_IMPLEMENTED--
-				as red-float! spec					;@@ just for making it compilable
-			]
-		]
-	]
+	;-- make: :to
 
 	form: func [
 		fl		   [red-float!]
@@ -169,7 +138,7 @@ percent: context [
 			TYPE_FLOAT
 			"percent!"
 			;-- General actions --
-			:make
+			INHERIT_ACTION	;make
 			INHERIT_ACTION	;random
 			null			;reflect
 			INHERIT_ACTION	;to
@@ -188,8 +157,8 @@ percent: context [
 			INHERIT_ACTION	;remainder
 			INHERIT_ACTION	;round
 			INHERIT_ACTION	;subtract
-			null			;even?
-			null			;odd?
+			INHERIT_ACTION	;even?
+			INHERIT_ACTION	;odd?
 			;-- Bitwise actions --
 			null			;and~
 			null			;complement

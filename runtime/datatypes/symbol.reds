@@ -3,7 +3,7 @@ Red/System [
 	Author:  "Nenad Rakocevic"
 	File: 	 %symbol.reds
 	Tabs:	 4
-	Rights:  "Copyright (C) 2011-2015 Nenad Rakocevic. All rights reserved."
+	Rights:  "Copyright (C) 2011-2018 Red Foundation. All rights reserved."
 	License: {
 		Distributed under the Boost Software License, Version 1.0.
 		See https://github.com/red/red/blob/master/BSL-License.txt
@@ -98,10 +98,11 @@ symbol: context [
 			id   [integer!]
 	][
 		#if debug? = yes [if verbose > 0 [print-line "symbol/make"]]
+		
 		str: declare red-string!
-		str/node: unicode/load-utf8 s system/words/length? s
+		str/node:	unicode/load-utf8 s system/words/length? s
 		str/header: TYPE_SYMBOL							;-- make hashtable happy
-		str/head: 0
+		str/head:	0
 		id: search str
 
 		if positive? id [return id]
@@ -137,7 +138,7 @@ symbol: context [
 		either positive? sym/alias [sym/alias][id]
 	]
 
-	alias-id: func [
+	get-alias-id: func [
 		id		[integer!]
 		return:	[integer!]
 		/local

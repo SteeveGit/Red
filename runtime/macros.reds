@@ -3,7 +3,7 @@ Red/System [
 	Author:  "Nenad Rakocevic"
 	File: 	 %macros.reds
 	Tabs:	 4
-	Rights:  "Copyright (C) 2011-2015 Nenad Rakocevic. All rights reserved."
+	Rights:  "Copyright (C) 2011-2018 Red Foundation. All rights reserved."
 	License: {
 		Distributed under the Boost Software License, Version 1.0.
 		See https://github.com/red/red/blob/master/BSL-License.txt
@@ -57,11 +57,12 @@ Red/System [
 	TYPE_TIME											;-- 2B		43
 	TYPE_TAG											;-- 2C		44
 	TYPE_EMAIL											;-- 2D		45
-	TYPE_IMAGE											;-- 2E		46
-	TYPE_EVENT											;-- 2F		47
+	TYPE_HANDLE											;-- 2E		46
+	TYPE_DATE											;-- 2F		47
+	TYPE_IMAGE											;-- 30		48		;-- needs to be last
+	TYPE_EVENT											
 	TYPE_CLOSURE
 	TYPE_PORT
-	
 ]
 
 #enum actions! [
@@ -224,9 +225,7 @@ Red/System [
 	NAT_EXTEND
 	NAT_DEBASE
 	NAT_TO_LOCAL_FILE
-	NAT_REQUEST_FILE
 	NAT_WAIT
-	NAT_REQUEST_DIR
 	NAT_CHECKSUM
 	NAT_UNSET
 	NAT_NEW_LINE
@@ -238,6 +237,12 @@ Red/System [
 	NAT_LIST_ENV
 	NAT_NOW
 	NAT_SIGN?
+	NAT_AS
+	NAT_CALL
+	NAT_ZERO?
+	NAT_SIZE?
+	NAT_BROWSE
+	NAT_DECOMPRESS
 ]
 
 #enum math-op! [
@@ -269,20 +274,26 @@ Red/System [
 	COMP_SORT
 	COMP_CASE_SORT
 	COMP_SAME
+	COMP_STRICT_EQUAL_WORD							;-- same as STRICT_EQUAL, but relaxed type matching for words
+	COMP_FIND
 ]
 
 #enum exceptions! [
 	RED_NO_EXCEPTION
-	;RED_INT_OVERFLOW:		1000
-	RED_THROWN_THROW:		195939000
+	OS_ERROR_VMEM:					100000000
+	OS_ERROR_VMEM_RELEASE_FAILED:	100000001
+	OS_ERROR_VMEM_OUT_OF_MEMORY:	100000002
+	OS_ERROR_VMEM_ALL:				100000010
+	RED_INT_OVERFLOW:				190000000
+	RED_THROWN_THROW:				195939000
 	RED_THROWN_EXIT
 	RED_THROWN_RETURN
 	RED_THROWN_CONTINUE
 	RED_THROWN_BREAK
-	RED_THROWN_ERROR:		195939070				;-- #0BADCAFE (keep it positive)
+	RED_THROWN_ERROR:				195939070		;-- #0BADCAFE (keep it positive)
 ]
 
-#define NATIVES_NB		100							;-- max number of natives (arbitrary set)
+#define NATIVES_NB		110							;-- max number of natives (arbitrary set)
 #define ACTIONS_NB		62							;-- number of actions (exact number)
 #define INHERIT_ACTION	-1							;-- placeholder for letting parent's action pass through
 
@@ -364,6 +375,8 @@ Red/System [
 #define ANY_SERIES?(type)	[
 	any [
 		type = TYPE_BLOCK
+		type = TYPE_HASH
+		type = TYPE_VECTOR
 		type = TYPE_PAREN
 		type = TYPE_PATH
 		type = TYPE_LIT_PATH
@@ -379,8 +392,8 @@ Red/System [
 	]
 ]
 
-#define ANY_BLOCK?(type)	[
-	any [									;@@ replace with ANY_BLOCK?
+#define ANY_BLOCK_STRICT?(type)	[
+	any [
 		type = TYPE_BLOCK
 		type = TYPE_PAREN
 		type = TYPE_PATH
@@ -388,6 +401,85 @@ Red/System [
 		type = TYPE_SET_PATH
 		type = TYPE_LIT_PATH
 	]
+]
+
+#define ANY_BLOCK?(type)	[
+	any [
+		type = TYPE_BLOCK
+		type = TYPE_PAREN
+		type = TYPE_HASH
+		type = TYPE_PATH
+		type = TYPE_GET_PATH
+		type = TYPE_SET_PATH
+		type = TYPE_LIT_PATH
+	]
+]
+
+#define ANY_LIST(type)	[
+	any [
+		type = TYPE_BLOCK
+		type = TYPE_PAREN
+		type = TYPE_HASH
+	]
+]
+
+#define ANY_PATH?(type)	[
+	any [
+		type = TYPE_PATH
+		type = TYPE_GET_PATH
+		type = TYPE_SET_PATH
+		type = TYPE_LIT_PATH
+	]
+]
+
+#define ANY_STRING?(type)	[
+	any [
+		type = TYPE_STRING
+		type = TYPE_FILE
+		type = TYPE_URL
+		type = TYPE_TAG
+		type = TYPE_EMAIL
+	]
+]
+
+#define ANY_WORD?(type) [
+	any [
+		type = TYPE_WORD
+		type = TYPE_SET_WORD
+		type = TYPE_GET_WORD
+		type = TYPE_LIT_WORD
+	]
+]
+
+#define TYPE_ANY_STRING [					;-- To be used in SWITCH cases
+	TYPE_STRING
+	TYPE_FILE
+	TYPE_URL
+	TYPE_TAG
+	TYPE_EMAIL	
+]
+
+#define TYPE_ANY_BLOCK [					;-- To be used in SWITCH cases
+	TYPE_BLOCK
+	TYPE_PAREN
+	TYPE_HASH
+	TYPE_PATH
+	TYPE_GET_PATH
+	TYPE_SET_PATH
+	TYPE_LIT_PATH
+]
+
+#define TYPE_ANY_LIST [						;-- To be used in SWITCH cases
+	TYPE_BLOCK
+	TYPE_HASH
+	TYPE_PAREN
+]
+
+#define TYPE_ANY_PATH [						;-- To be used in SWITCH cases
+	TYPE_PATH
+	TYPE_GET_PATH
+	TYPE_SET_PATH
+	TYPE_LIT_PATH
 ]
 
 #define BS_SET_BIT(array bit)  [
@@ -423,6 +515,16 @@ Red/System [
 		pbits: bound-check bs bit
 	][
 		if virtual-bit? bs bit [return 0]
+	]
+]
+
+#define GET_SIZE_FROM(spec) [
+	either TYPE_OF(spec) = TYPE_FLOAT [
+		fl: as red-float! spec
+		as-integer fl/value
+	][
+		int: as red-integer! spec
+		int/value
 	]
 ]
 

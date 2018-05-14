@@ -3,7 +3,7 @@ REBOL [
 	Author:  "Nenad Rakocevic"
 	File: 	 %cond-expr-test.r
 	Tabs:	 4
-	Rights:  "Copyright (C) 2011-2015 Nenad Rakocevic. All rights reserved."
+	Rights:  "Copyright (C) 2011-2018 Red Foundation. All rights reserved."
 	License: "BSD-3 - https://github.com/red/red/blob/origin/BSD-3-License.txt"
 ]
 
@@ -33,7 +33,7 @@ change-dir %../
 		  	foo: func [][a: 1]
 		  	if foo []
 		}
-		--assert-msg? "*** Compilation Error: return type missing in function: foo"
+		--assert-msg? "*** Compilation Error: IF requires a conditional expression"
 		--clean
   	
 		--compile-this "Red/System [] foo: func [][if exit []]"
